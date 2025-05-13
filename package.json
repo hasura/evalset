@@ -1,0 +1,26 @@
+{
+  "name": "promptql-latency",
+  "version": "1.0.0",
+  "description": "Script to measure PromptQL latency",
+  "main": "index.ts",
+  "scripts": {
+    "test": "ts-node index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/yargs": "^17.0.33",
+    "axios": "^1.6.7",
+    "chalk": "^4.1.2",
+    "csv-parse": "^5.6.0",
+    "dotenv": "^16.4.5",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/chalk": "^2.2.0",
+    "@types/node": "^20.11.24",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,15 @@
+.env
+promptql_response.json
+trace_response.json
+trace_output.json
+formatted_trace_response.json
+latency_results.json
+latency_results_*.json
+latency_results_*.md
+runs/*
+TODO.md
+node_modules/*
+questions/*
+evalset.csv
+system_prompts/*.txt
+evalset.csv
