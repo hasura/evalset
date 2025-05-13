@@ -6,7 +6,7 @@ import chalk from "chalk";
 import { parse } from "csv-parse/sync";
 
 // Load environment variables
-dotenv.config({ path: path.join(__dirname, ".env") });
+dotenv.config({ path: path.join(process.cwd(), ".env") });
 
 // Set debug mode
 const isDebug = process.env.DEBUG === "true";
@@ -151,17 +151,23 @@ export function formatResponse(response: any): string {
 }
 
 // Function to read questions from evalset.csv
-export function readQuestions(): Question[] {
-  return parse(fs.readFileSync(path.join(__dirname, "evalset.csv"), "utf-8"), {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-  });
+export function loadQuestions(): Question[] {
+  return parse(
+    fs.readFileSync(path.join(process.cwd(), "evalset.csv"), "utf-8"),
+    {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    }
+  ).map((row: { question: string; gold_answer: string }) => ({
+    question: row.question,
+    gold_answer: row.gold_answer,
+  }));
 }
 
 // Function to load system prompt
 export function loadSystemPrompt(env: string): string {
-  const promptPath = path.join(__dirname, "system_prompts", `${env}.txt`);
+  const promptPath = path.join(process.cwd(), "system_prompts", `${env}.txt`);
   try {
     return fs.readFileSync(promptPath, "utf-8").trim();
   } catch (error) {

@@ -13,3 +13,4 @@ questions/*
 evalset.csv
 system_prompts/*.txt
 evalset.csv
+dist/*

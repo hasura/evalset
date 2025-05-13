@@ -32,7 +32,7 @@ process.on("uncaughtException", (error) => {
 });
 
 // Load environment variables
-dotenv.config({ path: path.join(__dirname, ".env") });
+dotenv.config({ path: path.join(process.cwd(), ".env") });
 
 // Set debug mode
 const isDebug = process.env.DEBUG === "true";
@@ -313,7 +313,7 @@ const validateAllEnvironments = (
 
     // Check for base environment prompt file
     const envPromptPath = path.join(
-      __dirname,
+      process.cwd(),
       "system_prompts",
       `${env.baseEnv}.txt`
     );
@@ -361,7 +361,7 @@ interface Question {
 }
 
 const allQuestions: Question[] = parse(
-  fs.readFileSync(path.join(__dirname, "evalset.csv"), "utf-8"),
+  fs.readFileSync(path.join(process.cwd(), "evalset.csv"), "utf-8"),
   {
     columns: true,
     skip_empty_lines: true,
@@ -814,7 +814,7 @@ function loadSystemPrompt(env: {
   // First try to load build-specific prompt if version exists
   if (env.version) {
     const buildPromptPath = path.join(
-      __dirname,
+      process.cwd(),
       "system_prompts",
       `${env.displayName}.txt`
     );
@@ -829,7 +829,7 @@ function loadSystemPrompt(env: {
 
   // Try to load environment prompt
   const envPromptPath = path.join(
-    __dirname,
+    process.cwd(),
     "system_prompts",
     `${env.baseEnv}.txt`
   );
@@ -2554,8 +2554,111 @@ async function evaluateAccuracy(
   }
 }
 
-async function main() {
+export async function main(args: string[]) {
+  const argv = yargs(args)
+    .option("env", {
+      alias: "e",
+      type: "string",
+      description:
+        "Environment(s) to run against (dev, staging, production). Multiple environments can be specified as comma-separated values. " +
+        "You can also specify a version for an environment using parentheses, e.g. 'production,production(3a3d68b8c8)'.",
+      coerce: (arg: string) => {
+        const envs = arg.split(",").map((e) => e.trim());
+        const validEnvs = ["dev", "staging", "production"];
+
+        // Parse each environment string
+        return envs.map((envStr) => {
+          // Check if it's a versioned environment (e.g. "production(3a3d68b8c8)")
+          const match = envStr.match(/^([^(]+)(?:\(([^)]+)\))?$/);
+          if (!match) {
+            throw new Error(`Invalid environment format: ${envStr}`);
+          }
+
+          const [_, baseEnv, version] = match;
+          if (!validEnvs.includes(baseEnv)) {
+            throw new Error(
+              `Invalid environment: ${baseEnv}. Valid environments are: ${validEnvs.join(
+                ", "
+              )}`
+            );
+          }
+
+          return {
+            baseEnv,
+            version,
+            displayName: version ? `${baseEnv}(${version})` : baseEnv,
+          };
+        });
+      },
+      demandOption: true,
+    })
+    .option("runs", {
+      alias: "r",
+      type: "number",
+      description: "Number of concurrent requests per batch",
+      default: 3,
+    })
+    .option("questions", {
+      alias: "q",
+      type: "string",
+      description:
+        "Questions to run. Can be:\n" +
+        "- A single number (e.g. 1)\n" +
+        "- A comma-separated list (e.g. 1,2,3)\n" +
+        "- A range (e.g. 1-3)\n" +
+        '- A search string to match against questions (e.g. "WorkPass")',
+      conflicts: "all",
+    })
+    .option("all", {
+      alias: "a",
+      type: "boolean",
+      description: "Run all questions",
+      conflicts: "questions",
+    })
+    .option("output", {
+      alias: "o",
+      type: "string",
+      description: "Output file for results",
+      default: `latency_results_${new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")}.json`,
+    })
+    .option("concurrency", {
+      alias: "c",
+      type: "number",
+      description: "Maximum number of concurrent questions to run",
+      default: 5,
+    })
+    .option("batch-size", {
+      alias: "b",
+      type: "number",
+      description: "Number of questions to process in each batch",
+      default: 10,
+    })
+    .option("rate-limit", {
+      type: "number",
+      description: "Maximum requests per second (0 for no limit)",
+      default: 0,
+    })
+    .option("batch-delay", {
+      type: "number",
+      description: "Delay in seconds between batches of runs",
+      default: 0,
+    })
+    .option("num-batches", {
+      type: "number",
+      description: "Number of batches to run",
+      default: 1,
+    })
+    .check((argv) => {
+      if (!argv.questions && !argv.all) {
+        throw new Error("You must specify either --questions or --all");
+      }
+      return true;
+    })
+    .help()
+    .alias("help", "h")
+    .parse();
+
   await runLatencyTests();
 }
-
-main();

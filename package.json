@@ -1,14 +1,27 @@
 {
-  "name": "promptql-latency",
+  "name": "@hasura/promptql-latency-test",
   "version": "1.0.0",
   "description": "Script to measure PromptQL latency",
-  "main": "index.ts",
+  "main": "dist/index.js",
+  "bin": {
+    "promptql-latency-test": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
     "test": "ts-node index.ts",
     "update-golden": "ts-node update-golden.ts"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "promptql",
+    "latency",
+    "testing",
+    "performance"
+  ],
+  "author": "Hasura",
   "license": "ISC",
   "dependencies": {
     "@types/yargs": "^17.0.33",

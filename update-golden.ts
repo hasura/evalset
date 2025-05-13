@@ -10,13 +10,13 @@ import {
   getEnvironmentConfig,
   callPromptQL,
   formatResponse,
-  readQuestions,
+  loadQuestions,
   loadSystemPrompt,
   Question,
 } from "./shared";
 
 // Load environment variables
-dotenv.config({ path: path.join(__dirname, ".env") });
+dotenv.config({ path: path.join(process.cwd(), ".env") });
 
 // Create readline interface for user input
 const rl = readline.createInterface({
@@ -49,26 +49,26 @@ const argv = yargs(hideBin(process.argv))
   .parseSync();
 
 // Read questions from evalset.csv
-const allQuestions = readQuestions();
+const questions = loadQuestions();
 
 // Validate question number
-if (argv.question < 1 || argv.question > allQuestions.length) {
+if (argv.question < 1 || argv.question > questions.length) {
   console.error(
-    `Error: Question number must be between 1 and ${allQuestions.length}`
+    `Error: Question number must be between 1 and ${questions.length}`
   );
   process.exit(1);
 }
 
 // Get the question to update
-const questionToUpdate = allQuestions[argv.question - 1];
+const questionToUpdate = questions[argv.question - 1];
 
 // Function to update the CSV file
 function updateGoldenAnswer(questionNumber: number, newAnswer: string) {
   // Update the question in memory
-  allQuestions[questionNumber - 1].gold_answer = newAnswer;
+  questions[questionNumber - 1].gold_answer = newAnswer;
 
   // Convert back to CSV format
-  const csvContent = stringify(allQuestions, {
+  const csvContent = stringify(questions, {
     header: true,
     columns: {
       question: "question",
@@ -77,7 +77,7 @@ function updateGoldenAnswer(questionNumber: number, newAnswer: string) {
   });
 
   // Write back to file
-  fs.writeFileSync(path.join(__dirname, "evalset.csv"), csvContent);
+  fs.writeFileSync(path.join(process.cwd(), "evalset.csv"), csvContent);
 }
 
 // Main function
