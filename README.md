@@ -179,9 +179,12 @@ npm test -- --env dev,staging,production --runs 3 --all
   - A range (e.g. `1-3`)
   - A search string to match against questions (e.g. `"WorkPass"`)
 - `--all, -a`: Test all available questions
-- `--output, -o`: Output file for results (default: timestamp-based)
-- `--fuzzy-match-threshold`: Minimum pass rate for fuzzy match judge (default: 0.8)
-- `--data-accuracy-threshold`: Minimum pass rate for data accuracy judge (default: 0.8)
+- `--output`, `-o`: Output file for results (default: latency*results*[timestamp].json)
+- `--concurrency`, `-c`: Maximum number of concurrent questions to run (default: 5)
+- `--batch-size`, `-b`: Number of questions to process in each batch (default: 10)
+- `--rate-limit`: Maximum requests per second (0 for no limit) (default: 0)
+- `--batch-delay`: Delay in seconds between batches of runs (default: 0)
+- `--num-batches`: Number of batches to run (default: 1)
 
 ### Usage Examples
 

@@ -174,16 +174,6 @@ const argv = yargs(hideBin(process.argv))
       .toISOString()
       .replace(/[:.]/g, "-")}.json`,
   })
-  .option("fuzzy-match-threshold", {
-    type: "number",
-    description: "Minimum pass rate for fuzzy match judge",
-    default: 0.8,
-  })
-  .option("data-accuracy-threshold", {
-    type: "number",
-    description: "Minimum pass rate for data accuracy judge",
-    default: 0.8,
-  })
   .option("concurrency", {
     alias: "c",
     type: "number",
