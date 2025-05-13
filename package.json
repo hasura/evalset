@@ -1,6 +1,6 @@
 {
-  "name": "@hasura/promptql-latency-test",
-  "version": "1.0.0",
+  "name": "promptql-latency-test",
+  "version": "1.0.1",
   "description": "Script to measure PromptQL latency",
   "main": "dist/index.js",
   "bin": {

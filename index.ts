@@ -294,19 +294,38 @@ const validateAllEnvironments = (
   const allMissingVars: { [env: string]: string[] } = {};
 
   for (const env of envs) {
-    const envConfig = getEnvironmentConfig(env);
     const missingVars = [];
 
-    if (!envConfig.PROMPTQL_URL) missingVars.push("PROMPTQL_URL");
-    if (!envConfig.PROMPTQL_API_KEY) missingVars.push("PROMPTQL_API_KEY");
-    if (!envConfig.DDN_URL) missingVars.push("DDN_URL");
+    // Check for required environment variables based on the environment
+    if (env.baseEnv === "dev") {
+      if (!process.env.PROMPTQL_DATA_PLANE_URL_SECONDARY)
+        missingVars.push("PROMPTQL_DATA_PLANE_URL_SECONDARY");
+      if (!process.env.PROMPTQL_API_KEY_DEV)
+        missingVars.push("PROMPTQL_API_KEY_DEV");
+      if (!process.env.DDN_URL_DEV) missingVars.push("DDN_URL_DEV");
+    } else if (env.baseEnv === "staging") {
+      if (!process.env.PROMPTQL_DATA_PLANE_URL_MAIN)
+        missingVars.push("PROMPTQL_DATA_PLANE_URL_MAIN");
+      if (!process.env.PROMPTQL_API_KEY_STAGING)
+        missingVars.push("PROMPTQL_API_KEY_STAGING");
+      if (!process.env.DDN_URL_STAGING) missingVars.push("DDN_URL_STAGING");
+    } else if (env.baseEnv === "production") {
+      if (!process.env.PROMPTQL_DATA_PLANE_URL_MAIN)
+        missingVars.push("PROMPTQL_DATA_PLANE_URL_MAIN");
+      if (!process.env.PROMPTQL_API_KEY_PRODUCTION)
+        missingVars.push("PROMPTQL_API_KEY_PRODUCTION");
+      if (!process.env.DDN_URL_PRODUCTION)
+        missingVars.push("DDN_URL_PRODUCTION");
+    }
+
+    // Check for common required variables
     if (!process.env.DDN_AUTH_TOKEN) missingVars.push("DDN_AUTH_TOKEN");
     if (!process.env.HASURA_PAT) missingVars.push("HASURA_PAT");
-    if (!envConfig.PATRONUS_BASE_URL)
+    if (!process.env.PATRONUS_BASE_URL)
       missingVars.push("PATRONUS_BASE_URL (required for accuracy evaluation)");
-    if (!envConfig.PATRONUS_API_KEY)
+    if (!process.env.PATRONUS_API_KEY)
       missingVars.push("PATRONUS_API_KEY (required for accuracy evaluation)");
-    if (!envConfig.PATRONUS_PROJECT_ID)
+    if (!process.env.PATRONUS_PROJECT_ID)
       missingVars.push(
         "PATRONUS_PROJECT_ID (required for accuracy evaluation)"
       );
