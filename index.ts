@@ -311,13 +311,13 @@ const validateAllEnvironments = (
         "PATRONUS_PROJECT_ID (required for accuracy evaluation)"
       );
 
-    // Check for system prompt file
-    const promptPath = path.join(
+    // Check for base environment prompt file
+    const envPromptPath = path.join(
       __dirname,
       "system_prompts",
       `${env.baseEnv}.txt`
     );
-    if (!fs.existsSync(promptPath)) {
+    if (!fs.existsSync(envPromptPath)) {
       missingVars.push(`system_prompts/${env.baseEnv}.txt`);
     }
 
@@ -337,7 +337,7 @@ const validateAllEnvironments = (
     }
 
     errorMessage +=
-      "\nPlease ensure all required environment variables are set.";
+      "\nPlease ensure all required environment variables and system prompts are set.";
     throw new Error(errorMessage);
   }
 };
@@ -803,6 +803,46 @@ async function getTrace(traceId: string, env: string) {
   );
 }
 
+// Function to load system prompt with fallback
+function loadSystemPrompt(env: {
+  baseEnv: string;
+  version: string | undefined;
+  displayName: string;
+}): string {
+  const logger = Logger.getInstance(questions.length, NUM_RUNS);
+
+  // First try to load build-specific prompt if version exists
+  if (env.version) {
+    const buildPromptPath = path.join(
+      __dirname,
+      "system_prompts",
+      `${env.displayName}.txt`
+    );
+    try {
+      return fs.readFileSync(buildPromptPath, "utf-8").trim();
+    } catch (error) {
+      logger.logInfo(
+        `No build-specific prompt found at ${buildPromptPath}, falling back to environment prompt`
+      );
+    }
+  }
+
+  // Try to load environment prompt
+  const envPromptPath = path.join(
+    __dirname,
+    "system_prompts",
+    `${env.baseEnv}.txt`
+  );
+  try {
+    return fs.readFileSync(envPromptPath, "utf-8").trim();
+  } catch (error) {
+    logger.logError(
+      `Error reading system prompt for ${env.displayName}: ${error}`
+    );
+    throw new Error(`Failed to read system prompt from ${envPromptPath}`);
+  }
+}
+
 async function callPromptQL(
   question: string,
   envConfig: { name: string; config: ReturnType<typeof getEnvironmentConfig> },
@@ -823,21 +863,12 @@ async function callPromptQL(
 }> {
   const logger = Logger.getInstance(questions.length, NUM_RUNS);
 
-  // Load system prompt
-  const promptPath = path.join(
-    __dirname,
-    "system_prompts",
-    `${envConfig.name}.txt`
-  );
-  let systemPrompt = "";
-  try {
-    systemPrompt = fs.readFileSync(promptPath, "utf-8").trim();
-  } catch (error) {
-    logger.logError(
-      `Error reading system prompt for ${envConfig.name}: ${error}`
-    );
-    throw new Error(`Failed to read system prompt from ${promptPath}`);
-  }
+  // Load system prompt with fallback
+  const systemPrompt = loadSystemPrompt({
+    baseEnv: envConfig.name.split("(")[0],
+    version: envConfig.name.match(/\(([^)]+)\)/)?.[1],
+    displayName: envConfig.name,
+  });
 
   const requestData = {
     version: "v1",

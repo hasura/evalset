@@ -82,17 +82,37 @@ This testing suite provides comprehensive performance and accuracy testing for P
 
    ```
    system_prompts/
-   ├── dev.txt           # Main system prompt
-   ├── dev.txt.example   # Example system prompt
-   └── marketing.txt     # Alternative system prompt
+   ├── dev.txt                    # Base environment prompt
+   ├── dev(8a0a69ff30).txt       # Build-specific prompt (optional)
+   ├── staging.txt               # Base environment prompt
+   ├── production.txt            # Base environment prompt
+   └── marketing.txt             # Alternative system prompt
    ```
 
-3. **Best Practices**:
+3. **Build-Specific Prompts**:
+
+   - When testing against a specific build version (e.g., `dev(8a0a69ff30)`), the system will:
+     1. First look for a build-specific prompt (e.g., `dev(8a0a69ff30).txt`)
+     2. If not found, fall back to the base environment prompt (e.g., `dev.txt`)
+     3. Fail if neither exists
+   - This allows for testing different prompt configurations across builds while maintaining a default fallback
+   - Example usage:
+
+     ```bash
+     # Will use dev(8a0a69ff30).txt if it exists, otherwise fall back to dev.txt
+     npm test -- --env dev(8a0a69ff30) --runs 3 --all
+
+     # Will use dev.txt
+     npm test -- --env dev --runs 3 --all
+     ```
+
+4. **Best Practices**:
    - Keep system prompts focused and specific to the domain
    - Include clear instructions about data sources and response formats
    - Document any special handling for specific types of questions
    - Include citation and artifact formatting requirements
    - Specify how to handle edge cases and uncertainties
+   - Use build-specific prompts for testing prompt variations without affecting the base environment
 
 ### Environment Configuration
 
