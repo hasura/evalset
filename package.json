@@ -4,7 +4,8 @@
   "description": "Script to measure PromptQL latency",
   "main": "index.ts",
   "scripts": {
-    "test": "ts-node index.ts"
+    "test": "ts-node index.ts",
+    "update-golden": "ts-node update-golden.ts"
   },
   "keywords": [],
   "author": "",
@@ -14,6 +15,7 @@
     "axios": "^1.6.7",
     "chalk": "^4.1.2",
     "csv-parse": "^5.6.0",
+    "csv-stringify": "^6.5.2",
     "dotenv": "^16.4.5",
     "yargs": "^17.7.2"
   },
