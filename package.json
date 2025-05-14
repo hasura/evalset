@@ -1,10 +1,10 @@
 {
   "name": "promptql-latency-test",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Script to measure PromptQL latency",
   "main": "dist/index.js",
   "bin": {
-    "promptql-latency-test": "./dist/cli.js"
+    "promptql-latency-test": "dist/cli.js"
   },
   "files": [
     "dist"

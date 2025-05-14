@@ -106,6 +106,25 @@ function parseQuestionSelection(
 }
 
 // Parse command line arguments
+interface CliArgs {
+  env: Array<{
+    baseEnv: string;
+    version: string | undefined;
+    displayName: string;
+  }>;
+  runs: number;
+  questions?: string;
+  all?: boolean;
+  output: string;
+  concurrency: number;
+  "batch-size": number;
+  "rate-limit": number;
+  "batch-delay": number;
+  "num-batches": number;
+  "skip-accuracy": boolean;
+  // [key: string]: unknown;
+}
+
 const argv = yargs(hideBin(process.argv))
   .option("env", {
     alias: "e",
@@ -201,6 +220,12 @@ const argv = yargs(hideBin(process.argv))
     description: "Number of batches to run",
     default: 1,
   })
+  .option("skip-accuracy", {
+    type: "boolean",
+    description:
+      "Skip accuracy testing even if Patronus configuration is available",
+    default: false,
+  })
   .check((argv) => {
     if (!argv.questions && !argv.all) {
       throw new Error("You must specify either --questions or --all");
@@ -209,7 +234,7 @@ const argv = yargs(hideBin(process.argv))
   })
   .help()
   .alias("help", "h")
-  .parseSync();
+  .parseSync() as CliArgs;
 
 // Get environment configuration
 const getEnvironmentConfig = (env: {
@@ -321,14 +346,6 @@ const validateAllEnvironments = (
     // Check for common required variables
     if (!process.env.DDN_AUTH_TOKEN) missingVars.push("DDN_AUTH_TOKEN");
     if (!process.env.HASURA_PAT) missingVars.push("HASURA_PAT");
-    if (!process.env.PATRONUS_BASE_URL)
-      missingVars.push("PATRONUS_BASE_URL (required for accuracy evaluation)");
-    if (!process.env.PATRONUS_API_KEY)
-      missingVars.push("PATRONUS_API_KEY (required for accuracy evaluation)");
-    if (!process.env.PATRONUS_PROJECT_ID)
-      missingVars.push(
-        "PATRONUS_PROJECT_ID (required for accuracy evaluation)"
-      );
 
     // Check for base environment prompt file
     const envPromptPath = path.join(
@@ -986,13 +1003,21 @@ async function callPromptQL(
             pure_code_execution: pureCodeTime,
           };
 
-          // Evaluate accuracy
-          const accuracy = await evaluateAccuracy(
-            question,
-            response.data,
-            goldAnswer,
-            envConfig
-          );
+          // Evaluate accuracy only if not skipped and Patronus config is available
+          let accuracy = null;
+          if (
+            !argv["skip-accuracy"] &&
+            envConfig.config.PATRONUS_BASE_URL &&
+            envConfig.config.PATRONUS_API_KEY &&
+            envConfig.config.PATRONUS_PROJECT_ID
+          ) {
+            accuracy = await evaluateAccuracy(
+              question,
+              response.data,
+              goldAnswer,
+              envConfig
+            );
+          }
 
           logger.logDuration(durationS, envConfig.name);
           return {
@@ -1003,7 +1028,7 @@ async function callPromptQL(
             iterations,
             raw_request: requestData,
             raw_response: response.data,
-            accuracy: accuracy || null,
+            accuracy,
           };
         } else {
           logger.logError("Could not find POST:/query span in trace");
@@ -1863,11 +1888,30 @@ async function runLatencyTests() {
   const memoryMonitor = new MemoryMonitor();
   const batchProcessor = new BatchProcessor(
     argv.concurrency,
-    argv.batchSize,
-    argv.rateLimit
+    argv["batch-size"],
+    argv["rate-limit"]
   );
 
-  const totalRuns = NUM_RUNS * argv.numBatches;
+  // Log accuracy testing status
+  if (argv["skip-accuracy"]) {
+    logger.logInfo(
+      "Accuracy testing is disabled (--skip-accuracy flag is set)"
+    );
+  } else if (
+    !process.env.PATRONUS_BASE_URL ||
+    !process.env.PATRONUS_API_KEY ||
+    !process.env.PATRONUS_PROJECT_ID
+  ) {
+    logger.logInfo(
+      "Accuracy testing is disabled (Patronus configuration is not available)"
+    );
+  } else {
+    logger.logInfo(
+      "Accuracy testing is enabled (Patronus configuration is available)"
+    );
+  }
+
+  const totalRuns = NUM_RUNS * argv["num-batches"];
 
   const results: {
     metadata: {
@@ -1904,8 +1948,8 @@ async function runLatencyTests() {
       successful_runs: 0,
       failed_runs: 0,
       batch_info: {
-        num_batches: argv.numBatches,
-        batch_delay: argv.batchDelay,
+        num_batches: argv["num-batches"],
+        batch_delay: argv["batch-delay"],
       },
     },
     environments: {},
@@ -1914,8 +1958,8 @@ async function runLatencyTests() {
   logger.logInfo(
     `Starting latency tests with ${questions.length} question${
       questions.length === 1 ? "" : "s"
-    }, ${NUM_RUNS} concurrent requests per batch, ${argv.numBatches} batch${
-      argv.numBatches === 1 ? "" : "es"
+    }, ${NUM_RUNS} concurrent requests per batch, ${argv["num-batches"]} batch${
+      argv["num-batches"] === 1 ? "" : "es"
     } (${totalRuns} total runs) across environments: ${envConfigs
       .map((e) => e.name)
       .join(", ")}`
@@ -1924,24 +1968,24 @@ async function runLatencyTests() {
   if (questions.length > 1) {
     logger.logInfo(
       `Concurrency settings: ${argv.concurrency} concurrent questions, ${
-        argv.batchSize
+        argv["batch-size"]
       } questions per batch${
-        argv.rateLimit > 0
-          ? `, ${argv.rateLimit} requests/second rate limit`
+        argv["rate-limit"] > 0
+          ? `, ${argv["rate-limit"]} requests/second rate limit`
           : ""
       }`
     );
   } else {
     logger.logInfo(
       `Running ${NUM_RUNS} concurrent requests per batch${
-        argv.batchDelay > 0
-          ? ` with ${argv.batchDelay} second${
-              argv.batchDelay === 1 ? "" : "s"
+        argv["batch-delay"] > 0
+          ? ` with ${argv["batch-delay"]} second${
+              argv["batch-delay"] === 1 ? "" : "s"
             } delay between batches`
           : ""
       }${
-        argv.rateLimit > 0
-          ? ` and ${argv.rateLimit} requests/second rate limit`
+        argv["rate-limit"] > 0
+          ? ` and ${argv["rate-limit"]} requests/second rate limit`
           : ""
       }`
     );
@@ -1981,12 +2025,12 @@ async function runLatencyTests() {
       } | null> = [];
 
       // Process runs in batches
-      for (let batch = 0; batch < argv.numBatches; batch++) {
+      for (let batch = 0; batch < argv["num-batches"]; batch++) {
         const startRun = batch * NUM_RUNS;
 
         logger.logInfo(
           `Starting batch ${batch + 1}/${
-            argv.numBatches
+            argv["num-batches"]
           } with ${NUM_RUNS} concurrent runs`
         );
 
@@ -2006,14 +2050,14 @@ async function runLatencyTests() {
         allRuns.push(...runs);
 
         // Add delay between batches if not the last batch
-        if (batch < argv.numBatches - 1 && argv.batchDelay > 0) {
+        if (batch < argv["num-batches"] - 1 && argv["batch-delay"] > 0) {
           logger.logInfo(
-            `Waiting ${argv.batchDelay} second${
-              argv.batchDelay === 1 ? "" : "s"
+            `Waiting ${argv["batch-delay"]} second${
+              argv["batch-delay"] === 1 ? "" : "s"
             } before next batch...`
           );
           await new Promise((resolve) =>
-            setTimeout(resolve, argv.batchDelay * 1000)
+            setTimeout(resolve, argv["batch-delay"] * 1000)
           );
         }
       }
@@ -2669,6 +2713,12 @@ export async function main(args: string[]) {
       description: "Number of batches to run",
       default: 1,
     })
+    .option("skip-accuracy", {
+      type: "boolean",
+      description:
+        "Skip accuracy testing even if Patronus configuration is available",
+      default: false,
+    })
     .check((argv) => {
       if (!argv.questions && !argv.all) {
         throw new Error("You must specify either --questions or --all");
@@ -2678,6 +2728,27 @@ export async function main(args: string[]) {
     .help()
     .alias("help", "h")
     .parse();
+
+  // After Logger class definition and before runLatencyTests
+  // Log accuracy testing status
+  const logger = Logger.getInstance(questions.length, NUM_RUNS);
+  if ((argv as any)["skip-accuracy"]) {
+    logger.logInfo(
+      "Accuracy testing is disabled (--skip-accuracy flag is set)"
+    );
+  } else if (
+    !process.env.PATRONUS_BASE_URL ||
+    !process.env.PATRONUS_API_KEY ||
+    !process.env.PATRONUS_PROJECT_ID
+  ) {
+    logger.logInfo(
+      "Accuracy testing is disabled (Patronus configuration is not available)"
+    );
+  } else {
+    logger.logInfo(
+      "Accuracy testing is enabled (Patronus configuration is available)"
+    );
+  }
 
   await runLatencyTests();
 }

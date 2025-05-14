@@ -11,7 +11,7 @@ This testing suite provides comprehensive performance and accuracy testing for P
 
 - **Multi-environment Testing**: Run tests across dev, staging, and production environments
 - **Latency Measurement**: Track response times and component-level performance
-- **Accuracy Evaluation**: Assess answer quality using Patronus judges
+- **Accuracy Evaluation**: Assess answer quality using Patronus judges (optional)
 - **Detailed Reporting**: Generate comprehensive markdown reports
 - **Parallel Execution**: Run multiple test iterations concurrently
 - **Debug Mode**: Enable detailed logging for troubleshooting
@@ -40,7 +40,8 @@ This testing suite provides comprehensive performance and accuracy testing for P
   DDN_AUTH_TOKEN="your-ddn-auth-token"
   HASURA_PAT="your-hasura-pat"
 
-  # Patronus Configuration (for accuracy evaluation)
+  # Patronus Configuration (optional, for accuracy evaluation)
+  # If not provided, the script will run latency tests only
   PATRONUS_BASE_URL="patronus-backend.internal.example.com"
   PATRONUS_API_KEY="your-patronus-api-key"
   PATRONUS_PROJECT_ID="your-patronus-project-id"
@@ -51,6 +52,8 @@ This testing suite provides comprehensive performance and accuracy testing for P
   - PromptQL Data Plane URLs: `https://promptql.{instance}.private-ddn.hasura.app/api/query`
   - DDN URLs: `https://app-{env}.private-ddn.hasura.app/v1/sql`
   - Patronus URL: `patronus-backend.internal.{domain}`
+
+  > **Note**: Patronus configuration is optional. If not provided, the script will automatically run latency tests only. You can also explicitly skip accuracy testing using the `--skip-accuracy` flag even if Patronus configuration is available.
 
 ## Installation
 
@@ -100,10 +103,10 @@ This testing suite provides comprehensive performance and accuracy testing for P
 
      ```bash
      # Will use dev(8a0a69ff30).txt if it exists, otherwise fall back to dev.txt
-     npm test -- --env dev(8a0a69ff30) --runs 3 --all
+     npx promptql-latency-test --env dev(8a0a69ff30) --runs 3 --all
 
      # Will use dev.txt
-     npm test -- --env dev --runs 3 --all
+     npx promptql-latency-test --env dev --runs 3 --all
      ```
 
 4. **Best Practices**:
@@ -143,7 +146,8 @@ This testing suite provides comprehensive performance and accuracy testing for P
    DDN_AUTH_TOKEN="your-ddn-auth-token"
    HASURA_PAT="your-hasura-pat"
 
-   # Patronus Configuration (for accuracy evaluation)
+   # Patronus Configuration (optional, for accuracy evaluation)
+   # If not provided, the script will run latency tests only
    PATRONUS_BASE_URL="patronus-backend.internal.example.com"
    PATRONUS_API_KEY="your-patronus-api-key"
    PATRONUS_PROJECT_ID="your-patronus-project-id"
@@ -183,7 +187,7 @@ This testing suite provides comprehensive performance and accuracy testing for P
 ### Basic Usage
 
 ```bash
-npm test -- --env dev,staging,production --runs 3 --all
+npx promptql-latency-test --env dev,staging,production --runs 3 --all
 ```
 
 ### Command Line Options
@@ -205,6 +209,7 @@ npm test -- --env dev,staging,production --runs 3 --all
 - `--rate-limit`: Maximum requests per second (0 for no limit) (default: 0)
 - `--batch-delay`: Delay in seconds between batches of runs (default: 0)
 - `--num-batches`: Number of batches to run (default: 1)
+- `--skip-accuracy`: Skip accuracy testing even if Patronus configuration is available (default: false)
 
 ### Usage Examples
 
@@ -212,38 +217,68 @@ Run all questions:
 
 ```bash
 # Run against default environments
-npm test -- --env dev,staging,production --runs 3 --all
+npx promptql-latency-test --env dev,staging,production --runs 3 --all
 
 # Run against specific build version
-npm test -- --env production(3a3d68b8c8) --runs 3 --all
+npx promptql-latency-test --env production(3a3d68b8c8) --runs 3 --all
 
 # Run against multiple environments including specific build
-npm test -- --env dev,staging,production(3a3d68b8c8) --runs 3 --all
+npx promptql-latency-test --env dev,staging,production(3a3d68b8c8) --runs 3 --all
 ```
 
 Run specific questions:
 
 ```bash
 # Run single question by number
-npm test -- --env dev --runs 1 --questions 1
+npx promptql-latency-test --env dev --runs 1 --questions 1
 
 # Run multiple questions by number
-npm test -- --env dev,staging --runs 3 --questions 1,2,3
+npx promptql-latency-test --env dev,staging --runs 3 --questions 1,2,3
 
 # Run a range of questions
-npm test -- --env dev,staging --runs 3 --questions 1-3
+npx promptql-latency-test --env dev,staging --runs 3 --questions 1-3
 
 # Run questions by company name or keyword
-npm test -- --env dev,staging --runs 3 --questions "WorkPass"
-npm test -- --env dev,staging --runs 3 --questions "founders"
+npx promptql-latency-test --env dev,staging --runs 3 --questions "WorkPass"
+npx promptql-latency-test --env dev,staging --runs 3 --questions "founders"
 ```
+
+### Accuracy Testing
+
+The script supports three modes for accuracy testing:
+
+1. **Full Accuracy Testing** (default):
+
+   ```bash
+   npx promptql-latency-test --env dev --runs 3 --all
+   ```
+
+   - Runs both latency and accuracy tests
+   - Requires Patronus configuration in `.env`
+
+2. **Skip Accuracy Testing**:
+
+   ```bash
+   npx promptql-latency-test --env dev --runs 3 --all --skip-accuracy
+   ```
+
+   - Runs only latency tests
+   - Ignores Patronus configuration even if available
+
+3. **Automatic Mode**:
+   ```bash
+   npx promptql-latency-test --env dev --runs 3 --all
+   ```
+   - If Patronus configuration is missing, automatically skips accuracy testing
+   - If Patronus configuration is present, runs accuracy tests
+   - No need to specify any flags
 
 ### Example Output
 
 Here's an example of running a single question test:
 
 ```bash
-$ npm test -- --questions 1 --runs 1 --env dev
+$ npx promptql-latency-test --questions 1 --runs 1 --env dev
 
 Total questions available: 19
 Requested questions: 1
@@ -291,7 +326,7 @@ dev Q1/1 R1/1 ⏱️ 22.30s
 Enable detailed logging:
 
 ```bash
-DEBUG=true npm test -- --env dev --runs 3 --all
+DEBUG=true npx promptql-latency-test --env dev --runs 3 --all
 ```
 
 ## Test Results
