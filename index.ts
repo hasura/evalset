@@ -2752,3 +2752,11 @@ export async function main(args: string[]) {
 
   await runLatencyTests();
 }
+
+// Add direct execution block at the end of the file
+if (require.main === module) {
+  main(process.argv.slice(2)).catch((error) => {
+    console.error("Error:", error);
+    process.exit(1);
+  });
+}

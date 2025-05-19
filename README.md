@@ -64,6 +64,23 @@ This testing suite provides comprehensive performance and accuracy testing for P
    ```
 3. Create a `.env` file in the tests directory with the required environment variables
 
+## Local Development
+
+For local development and testing, you can use `npm test` with the same command line options:
+
+```bash
+# Run a single question test
+npm test -- --env "dev" --runs 1 --questions 1
+
+# Run multiple questions
+npm test -- --env "dev" --runs 3 --questions 1,2,3
+
+# Run all questions
+npm test -- --env "dev" --runs 3 --all
+```
+
+This is equivalent to using `npx promptql-latency-test` but runs directly from your local development environment. The `--` after `npm test` is required to pass arguments to the underlying script.
+
 ## System Prompt and Environment Setup
 
 ### System Prompt Configuration
