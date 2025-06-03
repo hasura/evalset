@@ -728,7 +728,8 @@ async function getTrace(traceId: string, env: string) {
   logger.logTraceInfo(traceId, env);
 
   const maxRetries = 10;
-  const retryDelay = 1000; // 1 seconds between retries
+  const baseDelay = 1000; // 1 second base delay
+  const maxDelay = 30000; // 30 seconds maximum delay
 
   // Get the DDN URL from the environment config
   const envConfig = envConfigs.find((e) => e.name === env);
@@ -822,7 +823,9 @@ async function getTrace(traceId: string, env: string) {
       // If we have traces but no POST:/query span yet, continue retrying
       if (attempt < maxRetries) {
         logger.logRetry(attempt, maxRetries, env);
-        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        // Exponential backoff: 2^(attempt-1) * baseDelay, capped at maxDelay
+        const delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
+        await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
     }
@@ -830,12 +833,15 @@ async function getTrace(traceId: string, env: string) {
     // If no traces yet, wait and retry
     if (attempt < maxRetries) {
       logger.logRetry(attempt, maxRetries, env);
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      // Exponential backoff: 2^(attempt-1) * baseDelay, capped at maxDelay
+      const delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 
   throw new Error(
-    "No traces found with POST:/query span after maximum retries"
+    "No traces found with POST:/query span after maximum retries for trace ID: " +
+      traceId
   );
 }
 
