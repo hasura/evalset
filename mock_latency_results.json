@@ -1,0 +1,228 @@
+{
+  "metadata": {
+    "timestamp": "2025-06-08T15:35:16.644Z",
+    "num_runs": 1,
+    "runs_per_batch": 1,
+    "total_questions": 1,
+    "successful_runs": 1,
+    "failed_runs": 1,
+    "batch_info": {
+      "num_batches": 1,
+      "batch_delay": 0
+    },
+    "memory_stats": {
+      "initialMB": 132,
+      "currentMB": 130,
+      "peakMB": 133
+    }
+  },
+  "environments": {
+    "production": {
+      "ddn_url": "https://[REDACTED-DDN-URL]/v1/sql",
+      "questions": {
+        "Who participated in Wealthfront's Series B round?": {
+          "runs": [],
+          "average": 0,
+          "min": 0,
+          "max": 0,
+          "average_iterations": 0,
+          "min_iterations": 0,
+          "max_iterations": 0,
+          "successful_runs": 0,
+          "failed_runs": 1,
+          "span_averages": {
+            "sql_engine_execute_sql": 0,
+            "call_llm_streaming": 0,
+            "pure_code_execution": 0
+          },
+          "span_mins": {
+            "sql_engine_execute_sql": 0,
+            "call_llm_streaming": 0,
+            "pure_code_execution": 0
+          },
+          "span_maxs": {
+            "sql_engine_execute_sql": 0,
+            "call_llm_streaming": 0,
+            "pure_code_execution": 0
+          }
+        }
+      }
+    },
+    "production(6fafc431d2)": {
+      "ddn_url": "https://[REDACTED-DDN-URL]/v1/sql",
+      "questions": {
+        "Who participated in Wealthfront's Series B round?": {
+          "runs": [
+            {
+              "duration": 26.635021381,
+              "timestamp": "2025-06-08T15:35:18.182Z",
+              "run_number": 1,
+              "trace_id": "9fcb103eb4172f99bc1b36811b1675f1",
+              "iterations": 2,
+              "span_durations": {
+                "sql_engine_execute_sql": 0.034646737,
+                "call_llm_streaming": 13.097440787,
+                "pure_code_execution": 13.502933857000002
+              },
+              "accuracy": {
+                "fuzzy_match": {
+                  "passed": true,
+                  "score": 1,
+                  "details": "[REDACTED-ACCURACY-DETAILS]"
+                },
+                "data_accuracy": {
+                  "passed": true,
+                  "score": 1,
+                  "details": "[REDACTED-ACCURACY-DETAILS]"
+                }
+              },
+              "raw_request": {
+                "version": "v1",
+                "promptql_api_key": "[REDACTED-API-KEY]",
+                "llm": {
+                  "provider": "hasura"
+                },
+                "ddn": {
+                  "url": "https://[REDACTED-DDN-URL]/v1/sql",
+                  "headers": {
+                    "authorization": "Bearer [REDACTED-TOKEN]"
+                  }
+                },
+                "timezone": "America/Sao_Paulo",
+                "system_instructions": "[REDACTED-SYSTEM-INSTRUCTIONS - contains email: [REDACTED-EMAIL]]",
+                "interactions": [
+                  {
+                    "user_message": {
+                      "text": "Who participated in Wealthfront's Series B round?"
+                    }
+                  }
+                ],
+                "stream": false
+              },
+              "raw_response": {
+                "thread_id": "b21ee69a-ed30-447e-b1fc-83678c825d7d",
+                "assistant_actions": "[REDACTED-ASSISTANT-ACTIONS]",
+                "modified_artifacts": [
+                  {
+                    "identifier": "wealthfront_series_b_investors",
+                    "title": "Wealthfront Series B Investors ($20M, 2013-03)",
+                    "artifact_type": "table",
+                    "data": [
+                      {
+                        "Investor Name (text)": "Greylock Partners",
+                        "Investor Type (enum_value)": "investment fund",
+                        "Lead Investor (boolean)": true,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "Index Ventures",
+                        "Investor Type (enum_value)": "investment fund",
+                        "Lead Investor (boolean)": true,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "[REDACTED-PERSON-NAME]",
+                        "Investor Type (enum_value)": "angel",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "[REDACTED-PERSON-NAME]",
+                        "Investor Type (enum_value)": "angel",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "[REDACTED-PERSON-NAME]",
+                        "Investor Type (enum_value)": "angel",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "Duff Ackerman and Goodrich",
+                        "Investor Type (enum_value)": "investment fund",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "[REDACTED-PERSON-NAME]",
+                        "Investor Type (enum_value)": "angel",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "[REDACTED-PERSON-NAME]",
+                        "Investor Type (enum_value)": "angel",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "[REDACTED-PERSON-NAME]",
+                        "Investor Type (enum_value)": "angel",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "[REDACTED-PERSON-NAME]",
+                        "Investor Type (enum_value)": "angel",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "[REDACTED-PERSON-NAME]",
+                        "Investor Type (enum_value)": "angel",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "Science",
+                        "Investor Type (enum_value)": "investment fund",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      },
+                      {
+                        "Investor Name (text)": "Social Capital",
+                        "Investor Type (enum_value)": "investment fund",
+                        "Lead Investor (boolean)": false,
+                        "Investment Date (text)": "2013-03"
+                      }
+                    ]
+                  },
+                  {
+                    "identifier": "citations_wealthfront_series_b",
+                    "title": "Citations",
+                    "artifact_type": "text",
+                    "data": "[REDACTED-CITATION-DATA]"
+                  }
+                ]
+              }
+            }
+          ],
+          "average": 26.635021381,
+          "min": 26.635021381,
+          "max": 26.635021381,
+          "average_iterations": 2,
+          "min_iterations": 2,
+          "max_iterations": 2,
+          "successful_runs": 1,
+          "failed_runs": 0,
+          "span_averages": {
+            "sql_engine_execute_sql": 0.034646737,
+            "call_llm_streaming": 13.097440787,
+            "pure_code_execution": 13.502933857000002
+          },
+          "span_mins": {
+            "sql_engine_execute_sql": 0.034646737,
+            "call_llm_streaming": 13.097440787,
+            "pure_code_execution": 13.502933857000002
+          },
+          "span_maxs": {
+            "sql_engine_execute_sql": 0.034646737,
+            "call_llm_streaming": 13.097440787,
+            "pure_code_execution": 13.502933857000002
+          }
+        }
+      }
+    }
+  }
+}
