@@ -7,6 +7,7 @@ import { hideBin } from "yargs/helpers";
 import chalk from "chalk";
 import { parse } from "csv-parse/sync";
 import { AccuracyResult } from "./types";
+import { generateMarkdownSummary } from "./generateMarkdownSummary";
 
 // Clean error handling
 process.on("uncaughtException", (error) => {
@@ -1817,16 +1818,16 @@ async function runLatencyTests() {
         stat === fastest
           ? chalk.green
           : stat === slowest
-          ? chalk.red
-          : stat.average === null
-          ? chalk.gray
-          : chalk.yellow;
+            ? chalk.red
+            : stat.average === null
+              ? chalk.gray
+              : chalk.yellow;
       const rank =
         index === 0 && stat.average !== null
           ? "🏆"
           : index === validStats.length - 1
-          ? "🐌"
-          : "";
+            ? "🐌"
+            : "";
 
       console.log(
         `${chalk.bold(`${index + 1}. ${stat.env}`)} ${rank} ` +
@@ -2005,16 +2006,16 @@ async function callPatronusJudge(
         result.score_raw !== undefined
           ? result.score_raw
           : result.score !== undefined
-          ? result.score
-          : 0;
+            ? result.score
+            : 0;
 
       // Look for passed in multiple possible places
       const passed =
         result.pass !== undefined
           ? result.pass
           : result.passed !== undefined
-          ? result.passed
-          : false;
+            ? result.passed
+            : false;
 
       const details =
         result.explanation || result.details || "No details provided";

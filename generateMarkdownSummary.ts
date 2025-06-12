@@ -318,8 +318,8 @@ ${envStats
         index === 0
           ? " (Fastest)"
           : index === envStats.length - 1
-          ? " (Slowest)"
-          : ""
+            ? " (Slowest)"
+            : ""
       } |`
   )
   .join("\n")}
@@ -500,6 +500,175 @@ ${questionEnvStats
       )}s | ${stat.span_averages.pure_code_execution.toFixed(2)}s |`
   )
   .join("\n")}
+
+#### Individual Run Details
+
+${envConfigs
+  .map((envConfig) => {
+    const envData = environments[envConfig.name].questions[question];
+    if (!envData || !Array.isArray(envData.runs) || envData.runs.length === 0) {
+      return `##### ${envConfig.name}
+No runs available for this environment.`;
+    }
+
+    return `##### ${envConfig.name}
+
+${envData.runs
+  .map((run: any, index: number) => {
+    const duration = run.duration ? run.duration.toFixed(2) + "s" : "N/A";
+    const iterations = run.iterations || "N/A";
+    const traceId = run.trace_id || "N/A";
+    const timestamp = run.timestamp
+      ? new Date(run.timestamp).toLocaleString()
+      : "N/A";
+    const fuzzyMatch = run.accuracy?.fuzzy_match?.passed ? "✅" : "❌";
+    const dataAccuracy = run.accuracy?.data_accuracy?.passed ? "✅" : "❌";
+    const sqlEngine = run.span_durations?.sql_engine_execute_sql
+      ? run.span_durations.sql_engine_execute_sql.toFixed(2) + "s"
+      : "N/A";
+    const llmStreaming = run.span_durations?.call_llm_streaming
+      ? run.span_durations.call_llm_streaming.toFixed(2) + "s"
+      : "N/A";
+    const pureCode = run.span_durations?.pure_code_execution
+      ? run.span_durations.pure_code_execution.toFixed(2) + "s"
+      : "N/A";
+
+    // Format LLM response details
+    let responseDetails = "";
+    if (run.raw_response) {
+      try {
+        const response = run.raw_response;
+
+        // Add assistant actions (intermediate responses) in chat format
+        if (
+          response.assistant_actions &&
+          response.assistant_actions !== "[REDACTED-ASSISTANT-ACTIONS]"
+        ) {
+          responseDetails += `\n**Conversation:**\n`;
+
+          let actions;
+          if (typeof response.assistant_actions === "string") {
+            try {
+              actions = JSON.parse(response.assistant_actions);
+            } catch {
+              actions = null;
+            }
+          } else {
+            actions = response.assistant_actions;
+          }
+
+          if (Array.isArray(actions)) {
+            actions.forEach((action: any, actionIndex: number) => {
+              responseDetails += `\n**Step ${actionIndex + 1}:**\n`;
+
+              if (action.message) {
+                responseDetails += `> ${action.message}\n\n`;
+              }
+
+              if (action.plan) {
+                responseDetails += `**Plan:**\n${action.plan}\n\n`;
+              }
+
+              if (action.code) {
+                responseDetails += `**Code:**\n\`\`\`python\n${action.code}\n\`\`\`\n\n`;
+              }
+
+              if (action.code_output) {
+                responseDetails += `**Output:**\n\`\`\`\n${action.code_output}\n\`\`\`\n\n`;
+              }
+
+              if (action.code_error) {
+                responseDetails += `**Error:**\n\`\`\`\n${action.code_error}\n\`\`\`\n\n`;
+              }
+            });
+          } else {
+            // Fallback to JSON if not parseable as array
+            responseDetails += `\`\`\`json\n${JSON.stringify(actions, null, 2)}\n\`\`\`\n`;
+          }
+        }
+
+        // Add artifacts
+        if (
+          response.modified_artifacts &&
+          Array.isArray(response.modified_artifacts)
+        ) {
+          responseDetails += `\n**Artifacts Generated:**\n`;
+          response.modified_artifacts.forEach(
+            (artifact: any, artifactIndex: number) => {
+              responseDetails += `\n###### Artifact ${artifactIndex + 1}: ${artifact.title || artifact.identifier}\n`;
+              responseDetails += `- **Type:** ${artifact.artifact_type}\n`;
+              responseDetails += `- **Identifier:** \`${artifact.identifier}\`\n`;
+
+              if (
+                artifact.artifact_type === "table" &&
+                Array.isArray(artifact.data)
+              ) {
+                responseDetails += `- **Data:** Table with ${artifact.data.length} rows\n`;
+                if (artifact.data.length > 0) {
+                  responseDetails += `\n**Table Contents:**\n`;
+                  // Create a markdown table from the data
+                  const headers = Object.keys(artifact.data[0]);
+                  responseDetails += `| ${headers.join(" | ")} |\n`;
+                  responseDetails += `| ${headers.map(() => "---").join(" | ")} |\n`;
+                  artifact.data.slice(0, 10).forEach((row: any) => {
+                    // Limit to first 10 rows
+                    const values = headers.map((header) => {
+                      const value = row[header];
+                      if (
+                        typeof value === "string" &&
+                        value.startsWith("[REDACTED-")
+                      ) {
+                        return "[REDACTED]";
+                      }
+                      return value?.toString().replace(/\|/g, "\\|") || "";
+                    });
+                    responseDetails += `| ${values.join(" | ")} |\n`;
+                  });
+                  if (artifact.data.length > 10) {
+                    responseDetails += `\n*... and ${artifact.data.length - 10} more rows*\n`;
+                  }
+                }
+              } else if (artifact.artifact_type === "text") {
+                responseDetails += `- **Content:** ${typeof artifact.data === "string" ? artifact.data.substring(0, 200) + (artifact.data.length > 200 ? "..." : "") : "N/A"}\n`;
+              } else {
+                responseDetails += `- **Data:** ${typeof artifact.data === "string" ? artifact.data.substring(0, 200) + (artifact.data.length > 200 ? "..." : "") : JSON.stringify(artifact.data).substring(0, 200) + "..."}\n`;
+              }
+            }
+          );
+        }
+
+        // Add thread ID
+        if (response.thread_id) {
+          responseDetails += `\n**Thread ID:** \`${response.thread_id}\`\n`;
+        }
+      } catch (error) {
+        responseDetails = `\n**Response:** Error parsing response data\n`;
+      }
+    }
+
+    return `###### Run ${index + 1}
+
+**Performance Metrics:**
+- **Duration:** ${duration}
+- **Iterations:** ${iterations}
+- **Timestamp:** ${timestamp}
+- **Trace ID:** \`${traceId}\`
+
+**Component Breakdown:**
+- **SQL Engine:** ${sqlEngine}
+- **LLM Streaming:** ${llmStreaming}
+- **Pure Code Execution:** ${pureCode}
+
+**Accuracy Results:**
+- **Fuzzy Match:** ${fuzzyMatch} ${run.accuracy?.fuzzy_match?.score ? `(Score: ${run.accuracy.fuzzy_match.score})` : ""}
+- **Data Accuracy:** ${dataAccuracy} ${run.accuracy?.data_accuracy?.score ? `(Score: ${run.accuracy.data_accuracy.score})` : ""}
+
+**LLM Response:**${responseDetails || "\nNo response data available."}
+`;
+  })
+  .join("\n")}`;
+  })
+  .join("\n\n")}
 `;
   });
 
