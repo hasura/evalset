@@ -6,7 +6,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import chalk from "chalk";
 import { parse } from "csv-parse/sync";
-import { AccuracyResult } from "./types";
+import { AccuracyResult, SpanInformation, ExecutionDetail } from "./types";
 import { generateMarkdownSummary } from "./generateMarkdownSummary";
 
 // Clean error handling
@@ -878,11 +878,7 @@ async function callPromptQL(
     call_llm_streaming: number | null;
     pure_code_execution: number | null;
   };
-  spanInformation: {
-    sql_engine_execute_sql: string | null;
-    code_executed: string | null;
-    error: string | null;
-  };
+  spanInformation: SpanInformation;
   iterations: number | null;
   raw_request: any;
   raw_response: any;
@@ -984,29 +980,50 @@ async function callPromptQL(
           const durationNs = parseInt(querySpan.Duration);
           const durationS = durationNs / 1_000_000_000; // Convert nanoseconds to seconds
 
-          const sqlEngineTime = sqlEngineSpan
-            ? parseInt(sqlEngineSpan.Duration) / 1_000_000_000
+          // Collect all SQL engine executions, not just the first one
+          const sqlEngineSpans = traces.filter(
+            (t: any) => t.SpanName === "sql_engine_execute_sql"
+          );
+
+          // Sum all SQL engine execution durations
+          const sqlEngineTime = sqlEngineSpans.length > 0
+            ? sqlEngineSpans.reduce((total: number, span: any) => 
+                total + (parseInt(span.Duration) / 1_000_000_000), 0)
             : null;
           const llmStreamingTime = llmStreamingSpan
             ? parseInt(llmStreamingSpan.Duration) / 1_000_000_000
             : null;
           const pureCodeTime =
             durationS - (sqlEngineTime || 0) - (llmStreamingTime || 0);
-          const sqlEngineSpanCodeString = sqlEngineSpan
-            ? sqlEngineSpan.SpanAttributes["sql"]
-            : null;
-          const codeAttribute =
-            iterations > 0
-              ? traces.find(
-                  (t: any) => t.SpanName === "promptql_exec_code_streaming"
-                )?.Events_Attributes["code"]
-              : null;
-          const errorAttribute =
-            iterations > 0
-              ? traces.find(
-                  (t: any) => t.SpanName === "promptql_exec_code_streaming"
-                )?.Events_Attributes["error"]
-              : null;
+          
+          // Create detailed execution information for SQL
+          const sqlExecutionDetails: ExecutionDetail[] = sqlEngineSpans
+            .map((span: any) => ({
+              content: span.SpanAttributes["sql"] || "",
+              duration_seconds: parseInt(span.Duration) / 1_000_000_000
+            }))
+            .filter((detail: ExecutionDetail) => detail.content.trim() !== "");
+          
+          // Collect all code execution traces, not just the first one
+          const codeExecutionSpans = traces.filter(
+            (t: any) => t.SpanName === "promptql_exec_code_streaming"
+          );
+          
+          // Create detailed execution information for code
+          const codeExecutionDetails: ExecutionDetail[] = codeExecutionSpans
+            .map((span: any) => ({
+              content: span.SpanAttributes["code"] || "",
+              duration_seconds: parseInt(span.Duration) / 1_000_000_000
+            }))
+            .filter((detail: ExecutionDetail) => detail.content.trim() !== "");
+          
+          // Create detailed execution information for errors
+          const errorExecutionDetails: ExecutionDetail[] = codeExecutionSpans
+            .map((span: any) => ({
+              content: span.SpanAttributes["error"] || "",
+              duration_seconds: parseInt(span.Duration) / 1_000_000_000
+            }))
+            .filter((detail: ExecutionDetail) => detail.content.trim() !== "");
 
           const spanDurations = {
             sql_engine_execute_sql: sqlEngineTime,
@@ -1014,11 +1031,13 @@ async function callPromptQL(
             pure_code_execution: pureCodeTime,
           };
 
-          const spanInformation = {
-            sql_engine_execute_sql: sqlEngineSpanCodeString,
-            code_executed: codeAttribute,
-            error: errorAttribute,
+          const spanInformation: SpanInformation = {
+            sql_engine_execute_sql: sqlExecutionDetails.length > 0 ? sqlExecutionDetails : null,
+            code_executed: codeExecutionDetails.length > 0 ? codeExecutionDetails : null,
+            error: errorExecutionDetails.length > 0 ? errorExecutionDetails : null,
           };
+
+          console.log({ spanInformation });
 
           // Evaluate accuracy only if not skipped and Patronus config is available
           let accuracy = null;
@@ -1170,11 +1189,7 @@ async function runQuestionTests(
     call_llm_streaming: number | null;
     pure_code_execution: number | null;
   };
-  span_information: {
-    sql_engine_execute_sql: string | null;
-    code_executed: string | null;
-    error: string | null;
-  };
+  span_information: SpanInformation;
   accuracy: AccuracyResult | null;
   raw_request: any;
   raw_response: any;
@@ -1219,9 +1234,7 @@ interface QuestionData {
       call_llm_streaming: number | null;
       pure_code_execution: number | null;
     };
-    span_information: {
-      sql_engine_execute_sql: string | null;
-    };
+    span_information: SpanInformation;
     accuracy: AccuracyResult | null;
     raw_request: any;
     raw_response: any;
@@ -1549,11 +1562,7 @@ async function runLatencyTests() {
         run_number: number;
         trace_id: string | null;
         iterations: number | null;
-        span_information: {
-          sql_engine_execute_sql: string | null;
-          code_executed: string | null;
-          error: string | null;
-        };
+        span_information: SpanInformation;
         span_durations: {
           sql_engine_execute_sql: number | null;
           call_llm_streaming: number | null;
