@@ -886,6 +886,11 @@ async function callPromptQL(
     call_llm_streaming: number | null;
     pure_code_execution: number | null;
   };
+  spanInformation: {
+    sql_engine_execute_sql: string | null;
+    code_executed: string | null;
+    error: string | null;
+  };
   iterations: number | null;
   raw_request: any;
   raw_response: any;
@@ -952,6 +957,11 @@ async function callPromptQL(
           call_llm_streaming: null,
           pure_code_execution: null,
         },
+        spanInformation: {
+          sql_engine_execute_sql: null,
+          code_executed: null,
+          error: null,
+        },
         iterations: null,
         raw_request: requestData,
         raw_response: response.data,
@@ -990,11 +1000,32 @@ async function callPromptQL(
             : null;
           const pureCodeTime =
             durationS - (sqlEngineTime || 0) - (llmStreamingTime || 0);
+          const sqlEngineSpanCodeString = sqlEngineSpan
+            ? sqlEngineSpan.SpanAttributes["sql"]
+            : null;
+          const codeAttribute =
+            iterations > 0
+              ? traces.find(
+                  (t: any) => t.SpanName === "promptql_exec_code_streaming"
+                )?.Events_Attributes["code"]
+              : null;
+          const errorAttribute =
+            iterations > 0
+              ? traces.find(
+                  (t: any) => t.SpanName === "promptql_exec_code_streaming"
+                )?.Events_Attributes["error"]
+              : null;
 
           const spanDurations = {
             sql_engine_execute_sql: sqlEngineTime,
             call_llm_streaming: llmStreamingTime,
             pure_code_execution: pureCodeTime,
+          };
+
+          const spanInformation = {
+            sql_engine_execute_sql: sqlEngineSpanCodeString,
+            code_executed: codeAttribute,
+            error: errorAttribute,
           };
 
           // Evaluate accuracy only if not skipped and Patronus config is available
@@ -1019,6 +1050,7 @@ async function callPromptQL(
             duration: durationS,
             traceId,
             spanDurations,
+            spanInformation,
             iterations,
             raw_request: requestData,
             raw_response: response.data,
@@ -1034,6 +1066,11 @@ async function callPromptQL(
               sql_engine_execute_sql: null,
               call_llm_streaming: null,
               pure_code_execution: null,
+            },
+            spanInformation: {
+              sql_engine_execute_sql: null,
+              code_executed: null,
+              error: null,
             },
             iterations: null,
             raw_request: requestData,
@@ -1051,6 +1088,11 @@ async function callPromptQL(
             sql_engine_execute_sql: null,
             call_llm_streaming: null,
             pure_code_execution: null,
+          },
+          spanInformation: {
+            sql_engine_execute_sql: null,
+            code_executed: null,
+            error: null,
           },
           iterations: null,
           raw_request: requestData,
@@ -1070,6 +1112,11 @@ async function callPromptQL(
           sql_engine_execute_sql: null,
           call_llm_streaming: null,
           pure_code_execution: null,
+        },
+        spanInformation: {
+          sql_engine_execute_sql: null,
+          code_executed: null,
+          error: null,
         },
         iterations: null,
         raw_request: requestData,
@@ -1100,6 +1147,11 @@ async function callPromptQL(
         call_llm_streaming: null,
         pure_code_execution: null,
       },
+      spanInformation: {
+        sql_engine_execute_sql: null,
+        code_executed: null,
+        error: null,
+      },
       iterations: null,
       raw_request: requestData,
       raw_response: axios.isAxiosError(error)
@@ -1127,6 +1179,11 @@ async function runQuestionTests(
     call_llm_streaming: number | null;
     pure_code_execution: number | null;
   };
+  span_information: {
+    sql_engine_execute_sql: string | null;
+    code_executed: string | null;
+    error: string | null;
+  };
   accuracy: AccuracyResult | null;
   raw_request: any;
   raw_response: any;
@@ -1148,6 +1205,7 @@ async function runQuestionTests(
         trace_id: result.traceId,
         iterations: result.iterations,
         span_durations: result.spanDurations,
+        span_information: result.spanInformation,
         accuracy: result.accuracy,
         raw_request: result.raw_request,
         raw_response: result.raw_response,
@@ -1177,6 +1235,9 @@ interface QuestionData {
       sql_engine_execute_sql: number | null;
       call_llm_streaming: number | null;
       pure_code_execution: number | null;
+    };
+    span_information: {
+      sql_engine_execute_sql: string | null;
     };
     accuracy: AccuracyResult | null;
     raw_request: any;
@@ -1505,6 +1566,11 @@ async function runLatencyTests() {
         run_number: number;
         trace_id: string | null;
         iterations: number | null;
+        span_information: {
+          sql_engine_execute_sql: string | null;
+          code_executed: string | null;
+          error: string | null;
+        };
         span_durations: {
           sql_engine_execute_sql: number | null;
           call_llm_streaming: number | null;

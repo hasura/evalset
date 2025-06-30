@@ -14,3 +14,4 @@ evalset.csv
 system_prompts/*.txt
 evalset.csv
 dist/*
+traces.json
