@@ -452,13 +452,10 @@ questions.forEach((q: Question, i: number) =>
 // Create a logger class to manage output
 class Logger {
   private static instance: Logger;
-  private currentQuestion: string | null = null;
   private currentRun: number | null = null;
   private currentQuestionIndex: number | null = null;
-  private currentEnvironment: string | null = null;
   private totalQuestions: number;
   private totalRuns: number;
-  private questionStartTime: Date | null = null;
   private lastProgressUpdate: number = 0;
   private runColors: chalk.Chalk[] = [
     chalk.blue,
@@ -512,9 +509,7 @@ class Logger {
   }
 
   startQuestion(question: string, questionIndex: number) {
-    this.currentQuestion = question;
     this.currentQuestionIndex = questionIndex;
-    this.questionStartTime = new Date();
     console.log(
       `\n${chalk.bold.cyan("=".repeat(80))}\n${chalk.bold.cyan(
         "🤔 Question:"
@@ -524,7 +519,6 @@ class Logger {
 
   startRun(runNumber: number, env: string) {
     this.currentRun = runNumber;
-    this.currentEnvironment = env;
     process.stdout.write(
       `\r${this.formatEnvironmentHeader(env)} ${this.formatQuestionHeader(
         this.currentQuestionIndex!
@@ -538,8 +532,7 @@ class Logger {
       sql_engine_execute_sql: number | null;
       call_llm_streaming: number | null;
       pure_code_execution: number | null;
-    },
-    env: string
+    }
   ) {
     const color =
       duration < 1 ? chalk.green : duration < 2 ? chalk.yellow : chalk.red;
@@ -572,7 +565,6 @@ class Logger {
   }
 
   logResults(
-    question: string,
     durations: number[],
     spanDurations: {
       sql_engine_execute_sql: number[];
@@ -1165,7 +1157,6 @@ async function callPromptQL(
 async function runQuestionTests(
   question: string,
   runNumber: number,
-  questionIndex: number,
   envConfig: { name: string; config: ReturnType<typeof getEnvironmentConfig> },
   goldAnswer: any
 ): Promise<{
@@ -1196,7 +1187,7 @@ async function runQuestionTests(
 
   if (result.success) {
     if (result.duration !== null) {
-      logger.endRun(result.duration, result.spanDurations, envConfig.name);
+      logger.endRun(result.duration, result.spanDurations);
 
       return {
         duration: result.duration,
@@ -1215,14 +1206,6 @@ async function runQuestionTests(
   }
   return null;
 }
-
-type ComponentKey =
-  | "sql_engine_execute_sql"
-  | "call_llm_streaming"
-  | "pure_code_execution";
-type ComponentStats = {
-  [K in ComponentKey]: number;
-};
 
 interface QuestionData {
   runs: Array<{
@@ -1597,7 +1580,6 @@ async function runLatencyTests() {
             runQuestionTests(
               question.question,
               startRun + j,
-              questionIndex,
               envConfig,
               question.gold_answer
             )
@@ -1704,7 +1686,6 @@ async function runLatencyTests() {
         };
 
         logger.logResults(
-          question.question,
           durations,
           {
             sql_engine_execute_sql: sqlEngineDurations,

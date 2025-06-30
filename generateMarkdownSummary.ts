@@ -203,7 +203,7 @@ export function generateMarkdownSummary(
       for (const [questionText, questionData] of Object.entries(envQuestions)) {
         if (!questionData || !Array.isArray(questionData.runs)) continue;
 
-        questionData.runs.forEach((run, runIndex) => {
+        questionData.runs.forEach((run) => {
           if (run.accuracy) {
             if (run.accuracy.fuzzy_match && !run.accuracy.fuzzy_match.passed) {
               const key = `${questionText.substring(0, 30)}...fuzzy`;
