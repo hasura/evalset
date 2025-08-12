@@ -880,6 +880,7 @@ async function callPromptQL(
   };
   spanInformation: SpanInformation;
   iterations: number | null;
+  query_ids: string[];
   raw_request: any;
   raw_response: any;
   accuracy: AccuracyResult | null;
@@ -931,6 +932,38 @@ async function callPromptQL(
       }
     );
 
+    // Save raw PromptQL response to file if in debug mode
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const sanitizedQuestion = question.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 50);
+    
+    if (isDebug) {
+      const promptqlOutputFile = `raw_output/promptql_${envConfig.name}_${sanitizedQuestion}_${timestamp}.json`;
+      
+      // Create directory if it doesn't exist
+      if (!fs.existsSync("raw_output")) {
+        fs.mkdirSync("raw_output");
+      }
+      
+      fs.writeFileSync(
+        promptqlOutputFile,
+        JSON.stringify({
+          request: requestData,
+          response: {
+            status: response.status,
+            headers: response.headers,
+            data: response.data
+          },
+          metadata: {
+            environment: envConfig.name,
+            question: question,
+            timestamp: new Date().toISOString()
+          }
+        }, null, 2)
+      );
+      
+      console.log(`🔍 Debug: Raw PromptQL response saved to: ${promptqlOutputFile}`);
+    }
+
     // Get trace ID from traceparent header (format: 00-traceId-spanId-01)
     const traceparent = response.headers["traceparent"];
     const traceId = traceparent?.split("-")[1] ?? null;
@@ -952,6 +985,7 @@ async function callPromptQL(
           error: null,
         },
         iterations: null,
+        query_ids: [],
         raw_request: requestData,
         raw_response: response.data,
         accuracy: null,
@@ -961,6 +995,29 @@ async function callPromptQL(
     // Get trace data with retries
     try {
       const traceResponse = await getTrace(traceId, envConfig.name);
+
+      // Save raw trace response to file if in debug mode
+      if (isDebug) {
+        const traceOutputFile = `raw_output/trace_${envConfig.name}_${sanitizedQuestion}_${timestamp}.json`;
+        fs.writeFileSync(
+          traceOutputFile,
+          JSON.stringify({
+            traceId: traceId,
+            response: {
+              status: traceResponse.status,
+              headers: traceResponse.headers,
+              data: traceResponse.data
+            },
+            metadata: {
+              environment: envConfig.name,
+              question: question,
+              timestamp: new Date().toISOString()
+            }
+          }, null, 2)
+        );
+        
+        console.log(`🔍 Debug: Raw trace response saved to: ${traceOutputFile}`);
+      }
 
       // Calculate total duration from trace
       const traces = traceResponse.data.data.otel_traces;
@@ -1009,6 +1066,40 @@ async function callPromptQL(
             }))
             .filter((detail: ExecutionDetail) => detail.content.trim() !== "");
 
+          // Extract query IDs from SQL engine spans and queryDatabase spans
+          // The query ID is located at SpanAttributes["redshift.query_id"]
+          const queryDatabaseSpans = traces.filter(
+            (t: any) => t.SpanName === "queryDatabase"
+          );
+          
+          const queryIds: string[] = [
+            ...sqlEngineSpans,
+            ...queryDatabaseSpans
+          ]
+            .map((span: any) => {
+              // Access the redshift.query_id directly from SpanAttributes
+              if (span.SpanAttributes && span.SpanAttributes["redshift.query_id"]) {
+                return span.SpanAttributes["redshift.query_id"];
+              }
+              return "";
+            })
+            .filter((id: string) => id.trim() !== "");
+          
+          // Debug: Log query ID extraction if in debug mode
+          if (isDebug && (sqlEngineSpans.length > 0 || queryDatabaseSpans.length > 0)) {
+            console.log("DEBUG: Extracting query IDs from SQL engine and queryDatabase spans");
+            console.log(`DEBUG: Found ${sqlEngineSpans.length} sql_engine_execute_sql spans and ${queryDatabaseSpans.length} queryDatabase spans`);
+            
+            [...sqlEngineSpans, ...queryDatabaseSpans].forEach((span: any, index: number) => {
+              if (span.SpanAttributes && span.SpanAttributes["redshift.query_id"]) {
+                console.log(`DEBUG: Span ${index} (${span.SpanName}) - redshift.query_id:`, span.SpanAttributes["redshift.query_id"]);
+              } else {
+                console.log(`DEBUG: Span ${index} (${span.SpanName}) - No redshift.query_id attribute found`);
+              }
+            });
+            console.log("DEBUG: Extracted query IDs:", queryIds);
+          }
+
           // Collect all code execution traces, not just the first one
           const codeExecutionSpans = traces.filter(
             (t: any) => t.SpanName === "promptql_exec_code_streaming"
@@ -1045,7 +1136,9 @@ async function callPromptQL(
               errorExecutionDetails.length > 0 ? errorExecutionDetails : null,
           };
 
-          console.log({ spanInformation });
+          if (isDebug) {
+            console.log("DEBUG: spanInformation:", JSON.stringify(spanInformation, null, 2));
+          }
 
           // Evaluate accuracy only if not skipped and Patronus config is available
           let accuracy = null;
@@ -1071,6 +1164,7 @@ async function callPromptQL(
             spanDurations,
             spanInformation,
             iterations,
+            query_ids: queryIds,
             raw_request: requestData,
             raw_response: response.data,
             accuracy,
@@ -1092,6 +1186,7 @@ async function callPromptQL(
               error: null,
             },
             iterations: null,
+            query_ids: [],
             raw_request: requestData,
             raw_response: response.data,
             accuracy: null,
@@ -1114,6 +1209,7 @@ async function callPromptQL(
             error: null,
           },
           iterations: null,
+          query_ids: [],
           raw_request: requestData,
           raw_response: response.data,
           accuracy: null,
@@ -1138,6 +1234,7 @@ async function callPromptQL(
           error: null,
         },
         iterations: null,
+        query_ids: [],
         raw_request: requestData,
         raw_response: response.data,
         accuracy: null,
@@ -1172,6 +1269,7 @@ async function callPromptQL(
         error: null,
       },
       iterations: null,
+      query_ids: [],
       raw_request: requestData,
       raw_response: axios.isAxiosError(error)
         ? error.response?.data || null
@@ -1198,6 +1296,7 @@ async function runQuestionTests(
     pure_code_execution: number | null;
   };
   span_information: SpanInformation;
+  query_ids: string[];
   accuracy: AccuracyResult | null;
   raw_request: any;
   raw_response: any;
@@ -1220,6 +1319,7 @@ async function runQuestionTests(
         iterations: result.iterations,
         span_durations: result.spanDurations,
         span_information: result.spanInformation,
+        query_ids: result.query_ids,
         accuracy: result.accuracy,
         raw_request: result.raw_request,
         raw_response: result.raw_response,
@@ -1243,6 +1343,7 @@ interface QuestionData {
       pure_code_execution: number | null;
     };
     span_information: SpanInformation;
+    query_ids: string[];
     accuracy: AccuracyResult | null;
     raw_request: any;
     raw_response: any;
@@ -1576,6 +1677,7 @@ async function runLatencyTests() {
           call_llm_streaming: number | null;
           pure_code_execution: number | null;
         };
+        query_ids: string[];
         accuracy: AccuracyResult | null;
         raw_request: any;
         raw_response: any;

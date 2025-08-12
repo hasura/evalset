@@ -28,6 +28,7 @@ export function generateMarkdownSummary(
               call_llm_streaming: number | null;
               pure_code_execution: number | null;
             };
+            query_ids: string[];
             accuracy: AccuracyResult | null;
             raw_request: any;
             raw_response: any;
@@ -193,6 +194,7 @@ export function generateMarkdownSummary(
               call_llm_streaming: number | null;
               pure_code_execution: number | null;
             };
+            query_ids: string[];
             accuracy: AccuracyResult | null;
             raw_request: any;
             raw_response: any;
@@ -518,6 +520,9 @@ ${envData.runs
     const duration = run.duration ? run.duration.toFixed(2) + "s" : "N/A";
     const iterations = run.iterations || "N/A";
     const traceId = run.trace_id || "N/A";
+    const queryIds = run.query_ids && run.query_ids.length > 0
+      ? run.query_ids.join(", ")
+      : "N/A";
     const timestamp = run.timestamp
       ? new Date(run.timestamp).toLocaleString()
       : "N/A";
@@ -653,6 +658,7 @@ ${envData.runs
 - **Iterations:** ${iterations}
 - **Timestamp:** ${timestamp}
 - **Trace ID:** \`${traceId}\`
+- **Query IDs:** ${queryIds !== "N/A" ? queryIds.split(", ").map((id: string) => `\`${id}\``).join(", ") : "N/A"}
 
 **Component Breakdown:**
 - **SQL Engine:** ${sqlEngine}

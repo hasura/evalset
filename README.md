@@ -45,6 +45,12 @@ This testing suite provides comprehensive performance and accuracy testing for P
   PATRONUS_BASE_URL="patronus-backend.internal.example.com"
   PATRONUS_API_KEY="your-patronus-api-key"
   PATRONUS_PROJECT_ID="your-patronus-project-id"
+
+  # Database Configuration (optional)
+  # Specifies the database type for query ID extraction from spans
+  # If set to "redshift", will look for "redshift.query_id" in span attributes
+  # If not set or empty, will look for ".query_id" in span attributes
+  DATABASE="redshift"
   ```
 
   Note: The URLs follow these patterns:
@@ -168,6 +174,12 @@ This is equivalent to using `npx promptql-latency-test` but runs directly from y
    PATRONUS_BASE_URL="patronus-backend.internal.example.com"
    PATRONUS_API_KEY="your-patronus-api-key"
    PATRONUS_PROJECT_ID="your-patronus-project-id"
+
+   # Database Configuration (optional)
+   # Specifies the database type for query ID extraction from spans
+   # If set to "redshift", will look for "redshift.query_id" in span attributes
+   # If not set or empty, will look for ".query_id" in span attributes
+   DATABASE="redshift"
    ```
 
 3. **Environment Selection**:
@@ -414,6 +426,7 @@ interface RunResult {
     call_llm_streaming: number | null;
     pure_code_execution: number | null;
   };
+  query_ids: string[];
   accuracy: AccuracyResult | null;
   raw_request: any;
   raw_response: any;
