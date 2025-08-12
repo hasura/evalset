@@ -15,3 +15,4 @@ system_prompts/*.txt
 evalset.csv
 dist/*
 traces.json
+raw_output/
