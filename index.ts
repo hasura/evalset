@@ -1814,19 +1814,6 @@ async function runLatencyTests() {
             pureCodeDurations.length > 0 ? Math.max(...pureCodeDurations) : 0,
         };
 
-        logger.logResults(
-          durations,
-          {
-            sql_engine_execute_sql: sqlEngineDurations,
-            call_llm_streaming: llmStreamingDurations,
-            pure_code_execution: pureCodeDurations,
-          },
-          envConfig.name,
-          validRuns
-            .map((run) => run.accuracy)
-            .filter((a): a is AccuracyResult => a !== null)
-        );
-
         const questionData = {
           runs: validRuns,
           average,
@@ -1842,10 +1829,7 @@ async function runLatencyTests() {
           span_maxs: spanMaxs,
         };
 
-        // Store in memory for summary generation
-        results.environments[envConfig.name].questions[question.question] = questionData;
-
-        // Write incrementally to reduce memory usage
+        // Write incrementally to reduce memory usage (don't store in memory)
         const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_${questionIndex}.json`);
         fs.writeFileSync(incrementalPath, JSON.stringify({
           metadata: { timestamp: new Date().toISOString() },
@@ -1855,6 +1839,7 @@ async function runLatencyTests() {
         }, null, 2));
         
         console.log(`💾 Incremental results written to: ${incrementalPath}`);
+        console.log(`🔍 DEBUG: Processed question ${questionIndex + 1}/${questions.length}: "${question.question}"`);
 
       } else {
         const questionData = {
@@ -1884,9 +1869,7 @@ async function runLatencyTests() {
           },
         };
 
-        results.environments[envConfig.name].questions[question.question] = questionData;
-
-        // Write incrementally to reduce memory usage (failed case)
+        // Write incrementally to reduce memory usage (failed case, don't store in memory)
         const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_${questionIndex}_failed.json`);
         fs.writeFileSync(incrementalPath, JSON.stringify({
           metadata: { timestamp: new Date().toISOString() },
@@ -1905,6 +1888,8 @@ async function runLatencyTests() {
     questions.map((q, i) => ({ question: q, index: i })),
     ({ question, index }) => processQuestion(question, index)
   );
+
+
 
   // Stop memory monitoring and add stats to results
   memoryMonitor.stop();
@@ -1942,6 +1927,38 @@ async function runLatencyTests() {
   console.log(`\n${chalk.bold("🌍 Environment Comparison")}`);
   console.log(`${chalk.bold.cyan("-".repeat(80))}`);
 
+  // Aggregate results from incremental files for final summary
+  console.log(`🔍 DEBUG: Final aggregation - questions array length: ${questions.length}`);
+  
+  // Load all incremental files and aggregate into results object for final summary
+  const outputBase = argv.output.replace('.json', '');
+  const incrementalFiles = fs.readdirSync('.').filter(file =>
+    file.startsWith(outputBase) &&
+    file.includes('_dev_') &&
+    file.endsWith('.json') &&
+    !file.includes('_failed.json') &&
+    file !== path.basename(argv.output)
+  );
+
+  console.log(`🔍 DEBUG: Found ${incrementalFiles.length} incremental files to aggregate`);
+
+  // Load all incremental results into memory for final summary generation
+  for (const file of incrementalFiles) {
+    try {
+      const content = fs.readFileSync(file, 'utf-8');
+      const data = JSON.parse(content);
+      
+      if (data.results && data.question && data.environment) {
+        results.environments[data.environment].questions[data.question] = data.results;
+        console.log(`🔍 DEBUG: Loaded question: "${data.question}"`);
+      }
+    } catch (error) {
+      console.log(`🔍 DEBUG: Error reading file ${file}:`, error);
+    }
+  }
+
+  console.log(`🔍 DEBUG: Final aggregation - results object questions count: ${Object.keys(results.environments[envConfigs[0].name].questions).length}`);
+
   for (const question of questions) {
     console.log(
       `\n${chalk.bold("❓ Question:")} ${chalk.yellow(question.question)}`
@@ -1951,12 +1968,12 @@ async function runLatencyTests() {
       .map((envConfig) => {
         const stats =
           results.environments[envConfig.name].questions[question.question];
-        const hasValidRuns = stats.successful_runs > 0;
+        const hasValidRuns = stats && stats.successful_runs > 0;
 
         // Calculate accuracy metrics
-        const accuracyResults = stats.runs
+        const accuracyResults = stats ? stats.runs
           .map((r) => r.accuracy)
-          .filter((a): a is AccuracyResult => a !== null);
+          .filter((a): a is AccuracyResult => a !== null) : [];
 
         const fuzzyMatchPassed = accuracyResults.filter(
           (a) => a.fuzzy_match.passed
@@ -1985,10 +2002,10 @@ async function runLatencyTests() {
           average: hasValidRuns ? stats.average : null,
           min: hasValidRuns ? stats.min : null,
           max: hasValidRuns ? stats.max : null,
-          successRate:
+          successRate: stats ? 
             (stats.successful_runs /
               (stats.successful_runs + stats.failed_runs)) *
-            100,
+            100 : 0,
           span_averages: hasValidRuns
             ? stats.span_averages
             : {
