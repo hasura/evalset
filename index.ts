@@ -239,25 +239,31 @@ const getEnvironmentConfig = (env: {
 }) => {
   const configs = {
     dev: {
-      PROMPTQL_URL: process.env.PROMPTQL_DATA_PLANE_URL_SECONDARY,
+      PROMPTQL_URL: process.env.PROMPTQL_DATA_PLANE_URL_DEV,
       PROMPTQL_API_KEY: process.env.PROMPTQL_API_KEY_DEV,
       DDN_URL: process.env.DDN_URL_DEV,
+      DDN_AUTH_TOKEN: process.env.DDN_AUTH_TOKEN_DEV,
+      HASURA_PAT: process.env.HASURA_PAT_DEV,
       PATRONUS_BASE_URL: process.env.PATRONUS_BASE_URL,
       PATRONUS_API_KEY: process.env.PATRONUS_API_KEY,
       PATRONUS_PROJECT_ID: process.env.PATRONUS_PROJECT_ID,
     },
     staging: {
-      PROMPTQL_URL: process.env.PROMPTQL_DATA_PLANE_URL_MAIN,
+      PROMPTQL_URL: process.env.PROMPTQL_DATA_PLANE_URL_STAGING,
       PROMPTQL_API_KEY: process.env.PROMPTQL_API_KEY_STAGING,
       DDN_URL: process.env.DDN_URL_STAGING,
+      DDN_AUTH_TOKEN: process.env.DDN_AUTH_TOKEN_STAGING,
+      HASURA_PAT: process.env.HASURA_PAT_STAGING,
       PATRONUS_BASE_URL: process.env.PATRONUS_BASE_URL,
       PATRONUS_API_KEY: process.env.PATRONUS_API_KEY,
       PATRONUS_PROJECT_ID: process.env.PATRONUS_PROJECT_ID,
     },
     production: {
-      PROMPTQL_URL: process.env.PROMPTQL_DATA_PLANE_URL_MAIN,
+      PROMPTQL_URL: process.env.PROMPTQL_DATA_PLANE_URL_PRODUCTION,
       PROMPTQL_API_KEY: process.env.PROMPTQL_API_KEY_PRODUCTION,
       DDN_URL: process.env.DDN_URL_PRODUCTION,
+      DDN_AUTH_TOKEN: process.env.DDN_AUTH_TOKEN_PRODUCTION,
+      HASURA_PAT: process.env.HASURA_PAT_PRODUCTION,
       PATRONUS_BASE_URL: process.env.PATRONUS_BASE_URL,
       PATRONUS_API_KEY: process.env.PATRONUS_API_KEY,
       PATRONUS_PROJECT_ID: process.env.PATRONUS_PROJECT_ID,
@@ -318,29 +324,31 @@ const validateAllEnvironments = (
 
     // Check for required environment variables based on the environment
     if (env.baseEnv === "dev") {
-      if (!process.env.PROMPTQL_DATA_PLANE_URL_SECONDARY)
-        missingVars.push("PROMPTQL_DATA_PLANE_URL_SECONDARY");
+      if (!process.env.PROMPTQL_DATA_PLANE_URL_DEV)
+        missingVars.push("PROMPTQL_DATA_PLANE_URL_DEV");
       if (!process.env.PROMPTQL_API_KEY_DEV)
         missingVars.push("PROMPTQL_API_KEY_DEV");
       if (!process.env.DDN_URL_DEV) missingVars.push("DDN_URL_DEV");
+      if (!process.env.DDN_AUTH_TOKEN_DEV) missingVars.push("DDN_AUTH_TOKEN_DEV");
+      if (!process.env.HASURA_PAT_DEV) missingVars.push("HASURA_PAT_DEV");
     } else if (env.baseEnv === "staging") {
-      if (!process.env.PROMPTQL_DATA_PLANE_URL_MAIN)
-        missingVars.push("PROMPTQL_DATA_PLANE_URL_MAIN");
+      if (!process.env.PROMPTQL_DATA_PLANE_URL_STAGING)
+        missingVars.push("PROMPTQL_DATA_PLANE_URL_STAGING");
       if (!process.env.PROMPTQL_API_KEY_STAGING)
         missingVars.push("PROMPTQL_API_KEY_STAGING");
       if (!process.env.DDN_URL_STAGING) missingVars.push("DDN_URL_STAGING");
+      if (!process.env.DDN_AUTH_TOKEN_STAGING) missingVars.push("DDN_AUTH_TOKEN_STAGING");
+      if (!process.env.HASURA_PAT_STAGING) missingVars.push("HASURA_PAT_STAGING");
     } else if (env.baseEnv === "production") {
-      if (!process.env.PROMPTQL_DATA_PLANE_URL_MAIN)
-        missingVars.push("PROMPTQL_DATA_PLANE_URL_MAIN");
+      if (!process.env.PROMPTQL_DATA_PLANE_URL_PRODUCTION)
+        missingVars.push("PROMPTQL_DATA_PLANE_URL_PRODUCTION");
       if (!process.env.PROMPTQL_API_KEY_PRODUCTION)
         missingVars.push("PROMPTQL_API_KEY_PRODUCTION");
       if (!process.env.DDN_URL_PRODUCTION)
         missingVars.push("DDN_URL_PRODUCTION");
+      if (!process.env.DDN_AUTH_TOKEN_PRODUCTION) missingVars.push("DDN_AUTH_TOKEN_PRODUCTION");
+      if (!process.env.HASURA_PAT_PRODUCTION) missingVars.push("HASURA_PAT_PRODUCTION");
     }
-
-    // Check for common required variables
-    if (!process.env.DDN_AUTH_TOKEN) missingVars.push("DDN_AUTH_TOKEN");
-    if (!process.env.HASURA_PAT) missingVars.push("HASURA_PAT");
 
     // Check for base environment prompt file
     const envPromptPath = path.join(
@@ -710,19 +718,15 @@ class Logger {
   }
 }
 
-async function getTrace(traceId: string, env: string) {
+async function getTrace(traceId: string, envConfig: { name: string; config: ReturnType<typeof getEnvironmentConfig> }) {
   const logger = Logger.getInstance(questions.length, NUM_RUNS);
-  logger.logTraceInfo(traceId, env);
+  logger.logTraceInfo(traceId, envConfig.name);
 
   const maxRetries = 10;
   const baseDelay = 1000; // 1 second base delay
   const maxDelay = 30000; // 30 seconds maximum delay
 
   // Get the DDN URL from the environment config
-  const envConfig = envConfigs.find((e) => e.name === env);
-  if (!envConfig) {
-    throw new Error(`Invalid environment: ${env}`);
-  }
   const hostHeader =
     envConfig.config.DDN_URL?.replace(/^https?:\/\/([^\/]+).*$/, "$1") || "";
 
@@ -780,7 +784,7 @@ async function getTrace(traceId: string, env: string) {
           accept: "application/graphql-response+json, application/json",
           "accept-language": "en-US,en;q=0.9,pt;q=0.8",
           "content-type": "application/json",
-          authorization: `pat ${process.env.HASURA_PAT}`,
+          authorization: `pat ${envConfig.config.HASURA_PAT}`,
           "hasura-client-name": "hasura-console",
           origin: "https://promptql.console.hasura.io",
           priority: "u=1, i",
@@ -809,7 +813,7 @@ async function getTrace(traceId: string, env: string) {
       }
       // If we have traces but no POST:/query span yet, continue retrying
       if (attempt < maxRetries) {
-        logger.logRetry(attempt, maxRetries, env);
+        logger.logRetry(attempt, maxRetries, envConfig.name);
         // Exponential backoff: 2^(attempt-1) * baseDelay, capped at maxDelay
         const delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -819,7 +823,7 @@ async function getTrace(traceId: string, env: string) {
 
     // If no traces yet, wait and retry
     if (attempt < maxRetries) {
-      logger.logRetry(attempt, maxRetries, env);
+      logger.logRetry(attempt, maxRetries, envConfig.name);
       // Exponential backoff: 2^(attempt-1) * baseDelay, capped at maxDelay
       const delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
       await new Promise((resolve) => setTimeout(resolve, delay));
@@ -910,8 +914,8 @@ async function callPromptQL(
     ddn: {
       url: envConfig.config.DDN_URL,
       headers: {
-        authorization: `Bearer ${process.env.DDN_AUTH_TOKEN}`,
-        "x-hasura-ddn-token": process.env.DDN_AUTH_TOKEN || "",
+        authorization: `Bearer ${envConfig.config.DDN_AUTH_TOKEN}`,
+        "x-hasura-ddn-token": envConfig.config.DDN_AUTH_TOKEN || "",
       },
     },
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -1001,7 +1005,7 @@ async function callPromptQL(
 
     // Get trace data with retries
     try {
-      const traceResponse = await getTrace(traceId, envConfig.name);
+      const traceResponse = await getTrace(traceId, envConfig);
 
       // Save raw trace response to file if in debug mode
       if (isDebug) {

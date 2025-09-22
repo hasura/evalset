@@ -23,25 +23,28 @@ This testing suite provides comprehensive performance and accuracy testing for P
 - Required environment variables:
 
   ```bash
-  # PromptQL Configuration
+  # Development Environment
   PROMPTQL_API_KEY_DEV="your-dev-api-key"
-  PROMPTQL_API_KEY_STAGING="your-staging-api-key"
-  PROMPTQL_API_KEY_PRODUCTION="your-production-api-key"
-
-  # Data Plane URLs
-  PROMPTQL_DATA_PLANE_URL_MAIN="https://promptql.main-instance.private-ddn.hasura.app/api/query"
-  PROMPTQL_DATA_PLANE_URL_SECONDARY="https://promptql.secondary-instance.private-ddn.hasura.app/api/query"
-
-  # DDN URLs
+  PROMPTQL_DATA_PLANE_URL_DEV="https://promptql.dev.private-ddn.hasura.app/api/query"
   DDN_URL_DEV="https://app-dev.private-ddn.hasura.app/v1/sql"
+  DDN_AUTH_TOKEN_DEV="your-dev-ddn-auth-token"
+  HASURA_PAT_DEV="your-dev-hasura-pat"
+
+  # Staging Environment
+  PROMPTQL_API_KEY_STAGING="your-staging-api-key"
+  PROMPTQL_DATA_PLANE_URL_STAGING="https://promptql.staging.private-ddn.hasura.app/api/query"
   DDN_URL_STAGING="https://app-staging.private-ddn.hasura.app/v1/sql"
+  DDN_AUTH_TOKEN_STAGING="your-staging-ddn-auth-token"
+  HASURA_PAT_STAGING="your-staging-hasura-pat"
+
+  # Production Environment
+  PROMPTQL_API_KEY_PRODUCTION="your-production-api-key"
+  PROMPTQL_DATA_PLANE_URL_PRODUCTION="https://promptql.production.private-ddn.hasura.app/api/query"
   DDN_URL_PRODUCTION="https://app-production.private-ddn.hasura.app/v1/sql"
+  DDN_AUTH_TOKEN_PRODUCTION="your-production-ddn-auth-token"
+  HASURA_PAT_PRODUCTION="your-production-hasura-pat"
 
-  # Authentication
-  DDN_AUTH_TOKEN="your-ddn-auth-token"
-  HASURA_PAT="your-hasura-pat"
-
-  # Patronus Configuration (optional, for accuracy evaluation)
+  # Patronus Configuration (optional, shared across environments)
   # If not provided, the script will run latency tests only
   PATRONUS_BASE_URL="patronus-backend.internal.example.com"
   PATRONUS_API_KEY="your-patronus-api-key"
@@ -54,9 +57,10 @@ This testing suite provides comprehensive performance and accuracy testing for P
   DATABASE="redshift"
   ```
 
-  Note: The URLs follow these patterns:
+  > **Important**: Each environment now has its own set of authentication tokens and URLs for better security and isolation.
 
-  - PromptQL Data Plane URLs: `https://promptql.{instance}.private-ddn.hasura.app/api/query`
+  Note: The URLs follow these patterns:
+  - PromptQL Data Plane URLs: `https://promptql.{env}.private-ddn.hasura.app/api/query`
   - DDN URLs: `https://app-{env}.private-ddn.hasura.app/v1/sql`
   - Patronus URL: `patronus-backend.internal.{domain}`
 
@@ -69,7 +73,42 @@ This testing suite provides comprehensive performance and accuracy testing for P
    ```bash
    npm install
    ```
-3. Create a `.env` file in the tests directory with the required environment variables
+3. Create a `.env` file in the tests directory with the required environment variables (see `.env.example` for the template)
+
+## Migration from Previous Configuration
+
+If you're upgrading from a previous version that used shared authentication tokens, you'll need to update your `.env` file:
+
+### Old Configuration (deprecated):
+```bash
+# Shared across environments
+DDN_AUTH_TOKEN="your-shared-token"
+HASURA_PAT="your-shared-pat"
+PROMPTQL_DATA_PLANE_URL_MAIN="..."
+PROMPTQL_DATA_PLANE_URL_SECONDARY="..."
+```
+
+### New Configuration (required):
+```bash
+# Each environment has its own tokens and URLs
+DDN_AUTH_TOKEN_DEV="your-dev-token"
+DDN_AUTH_TOKEN_STAGING="your-staging-token"
+DDN_AUTH_TOKEN_PRODUCTION="your-production-token"
+
+HASURA_PAT_DEV="your-dev-pat"
+HASURA_PAT_STAGING="your-staging-pat"
+HASURA_PAT_PRODUCTION="your-production-pat"
+
+PROMPTQL_DATA_PLANE_URL_DEV="..."
+PROMPTQL_DATA_PLANE_URL_STAGING="..."
+PROMPTQL_DATA_PLANE_URL_PRODUCTION="..."
+```
+
+**Benefits of the new configuration:**
+- **Improved Security**: Each environment has isolated credentials
+- **Better Access Control**: Different permissions per environment
+- **Clearer Configuration**: Environment-specific naming prevents confusion
+- **Safer Testing**: No risk of accidentally using production tokens in development
 
 ## Local Development
 
@@ -152,25 +191,28 @@ This is equivalent to using `npx promptql-latency-test` but runs directly from y
 2. **Required Variables**:
 
    ```bash
-   # PromptQL Configuration
+   # Development Environment
    PROMPTQL_API_KEY_DEV="your-dev-api-key"
-   PROMPTQL_API_KEY_STAGING="your-staging-api-key"
-   PROMPTQL_API_KEY_PRODUCTION="your-production-api-key"
-
-   # Data Plane URLs
-   PROMPTQL_DATA_PLANE_URL_MAIN="https://promptql.main-instance.private-ddn.hasura.app/api/query"
-   PROMPTQL_DATA_PLANE_URL_SECONDARY="https://promptql.secondary-instance.private-ddn.hasura.app/api/query"
-
-   # DDN URLs
+   PROMPTQL_DATA_PLANE_URL_DEV="https://promptql.dev.private-ddn.hasura.app/api/query"
    DDN_URL_DEV="https://app-dev.private-ddn.hasura.app/v1/sql"
+   DDN_AUTH_TOKEN_DEV="your-dev-ddn-auth-token"
+   HASURA_PAT_DEV="your-dev-hasura-pat"
+
+   # Staging Environment
+   PROMPTQL_API_KEY_STAGING="your-staging-api-key"
+   PROMPTQL_DATA_PLANE_URL_STAGING="https://promptql.staging.private-ddn.hasura.app/api/query"
    DDN_URL_STAGING="https://app-staging.private-ddn.hasura.app/v1/sql"
+   DDN_AUTH_TOKEN_STAGING="your-staging-ddn-auth-token"
+   HASURA_PAT_STAGING="your-staging-hasura-pat"
+
+   # Production Environment
+   PROMPTQL_API_KEY_PRODUCTION="your-production-api-key"
+   PROMPTQL_DATA_PLANE_URL_PRODUCTION="https://promptql.production.private-ddn.hasura.app/api/query"
    DDN_URL_PRODUCTION="https://app-production.private-ddn.hasura.app/v1/sql"
+   DDN_AUTH_TOKEN_PRODUCTION="your-production-ddn-auth-token"
+   HASURA_PAT_PRODUCTION="your-production-hasura-pat"
 
-   # Authentication
-   DDN_AUTH_TOKEN="your-ddn-auth-token"
-   HASURA_PAT="your-hasura-pat"
-
-   # Patronus Configuration (optional, for accuracy evaluation)
+   # Patronus Configuration (optional, shared across environments)
    # If not provided, the script will run latency tests only
    PATRONUS_BASE_URL="patronus-backend.internal.example.com"
    PATRONUS_API_KEY="your-patronus-api-key"
