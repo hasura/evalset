@@ -110,6 +110,7 @@ interface CliArgs {
   "batch-delay": number;
   "num-batches": number;
   "skip-accuracy": boolean;
+  "keep-incremental": boolean;
   // [key: string]: unknown;
 }
 
@@ -212,6 +213,12 @@ const argv = yargs(hideBin(process.argv))
     type: "boolean",
     description:
       "Skip accuracy testing even if Patronus configuration is available",
+    default: false,
+  })
+  .option("keep-incremental", {
+    type: "boolean",
+    description:
+      "Keep incremental result files after completion (default: false - files are cleaned up)",
     default: false,
   })
   .check((argv) => {
@@ -1574,6 +1581,7 @@ async function runLatencyTests() {
 
   const totalRuns = NUM_RUNS * argv["num-batches"];
 
+  // Create results object for summary generation (kept in memory for final processing)
   const results: {
     metadata: {
       timestamp: string;
@@ -1616,6 +1624,14 @@ async function runLatencyTests() {
     environments: {},
   };
 
+  // Initialize results structure for each environment
+  for (const envConfig of envConfigs) {
+    results.environments[envConfig.name] = {
+      ddn_url: envConfig.config.DDN_URL!,
+      questions: {},
+    };
+  }
+
   logger.logInfo(
     `Starting latency tests with ${questions.length} question${
       questions.length === 1 ? "" : "s"
@@ -1655,13 +1671,7 @@ async function runLatencyTests() {
   // Start memory monitoring
   memoryMonitor.start();
 
-  // Initialize results structure for each environment
-  for (const envConfig of envConfigs) {
-    results.environments[envConfig.name] = {
-      ddn_url: envConfig.config.DDN_URL!,
-      questions: {},
-    };
-  }
+  // Note: Environment structure is now initialized in the streaming writer
 
   // Process questions in batches
   const processQuestion = async (question: Question, questionIndex: number) => {
@@ -1808,20 +1818,7 @@ async function runLatencyTests() {
             pureCodeDurations.length > 0 ? Math.max(...pureCodeDurations) : 0,
         };
 
-        logger.logResults(
-          durations,
-          {
-            sql_engine_execute_sql: sqlEngineDurations,
-            call_llm_streaming: llmStreamingDurations,
-            pure_code_execution: pureCodeDurations,
-          },
-          envConfig.name,
-          validRuns
-            .map((run) => run.accuracy)
-            .filter((a): a is AccuracyResult => a !== null)
-        );
-
-        results.environments[envConfig.name].questions[question.question] = {
+        const questionData = {
           runs: validRuns,
           average,
           min,
@@ -1835,8 +1832,21 @@ async function runLatencyTests() {
           span_mins: spanMins,
           span_maxs: spanMaxs,
         };
+
+        // Write incrementally to reduce memory usage (don't store in memory)
+        const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_${questionIndex}.json`);
+        fs.writeFileSync(incrementalPath, JSON.stringify({
+          metadata: { timestamp: new Date().toISOString() },
+          environment: envConfig.name,
+          question: question.question,
+          results: questionData
+        }, null, 2));
+        
+        console.log(`💾 Incremental results written to: ${incrementalPath}`);
+        console.log(`🔍 DEBUG: Processed question ${questionIndex + 1}/${questions.length}: "${question.question}"`);
+
       } else {
-        results.environments[envConfig.name].questions[question.question] = {
+        const questionData = {
           runs: [],
           average: 0,
           min: 0,
@@ -1862,6 +1872,17 @@ async function runLatencyTests() {
             pure_code_execution: 0,
           },
         };
+
+        // Write incrementally to reduce memory usage (failed case, don't store in memory)
+        const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_${questionIndex}_failed.json`);
+        fs.writeFileSync(incrementalPath, JSON.stringify({
+          metadata: { timestamp: new Date().toISOString() },
+          environment: envConfig.name,
+          question: question.question,
+          results: questionData
+        }, null, 2));
+        
+        console.log(`💾 Incremental results written to: ${incrementalPath}`);
       }
     }
   };
@@ -1871,6 +1892,8 @@ async function runLatencyTests() {
     questions.map((q, i) => ({ question: q, index: i })),
     ({ question, index }) => processQuestion(question, index)
   );
+
+
 
   // Stop memory monitoring and add stats to results
   memoryMonitor.stop();
@@ -1908,6 +1931,38 @@ async function runLatencyTests() {
   console.log(`\n${chalk.bold("🌍 Environment Comparison")}`);
   console.log(`${chalk.bold.cyan("-".repeat(80))}`);
 
+  // Aggregate results from incremental files for final summary
+  console.log(`🔍 DEBUG: Final aggregation - questions array length: ${questions.length}`);
+  
+  // Load all incremental files and aggregate into results object for final summary
+  const outputBase = argv.output.replace('.json', '');
+  const incrementalFiles = fs.readdirSync('.').filter(file =>
+    file.startsWith(outputBase) &&
+    file.includes('_dev_') &&
+    file.endsWith('.json') &&
+    !file.includes('_failed.json') &&
+    file !== path.basename(argv.output)
+  );
+
+  console.log(`🔍 DEBUG: Found ${incrementalFiles.length} incremental files to aggregate`);
+
+  // Load all incremental results into memory for final summary generation
+  for (const file of incrementalFiles) {
+    try {
+      const content = fs.readFileSync(file, 'utf-8');
+      const data = JSON.parse(content);
+      
+      if (data.results && data.question && data.environment) {
+        results.environments[data.environment].questions[data.question] = data.results;
+        console.log(`🔍 DEBUG: Loaded question: "${data.question}"`);
+      }
+    } catch (error) {
+      console.log(`🔍 DEBUG: Error reading file ${file}:`, error);
+    }
+  }
+
+  console.log(`🔍 DEBUG: Final aggregation - results object questions count: ${Object.keys(results.environments[envConfigs[0].name].questions).length}`);
+
   for (const question of questions) {
     console.log(
       `\n${chalk.bold("❓ Question:")} ${chalk.yellow(question.question)}`
@@ -1917,12 +1972,12 @@ async function runLatencyTests() {
       .map((envConfig) => {
         const stats =
           results.environments[envConfig.name].questions[question.question];
-        const hasValidRuns = stats.successful_runs > 0;
+        const hasValidRuns = stats && stats.successful_runs > 0;
 
         // Calculate accuracy metrics
-        const accuracyResults = stats.runs
+        const accuracyResults = stats ? stats.runs
           .map((r) => r.accuracy)
-          .filter((a): a is AccuracyResult => a !== null);
+          .filter((a): a is AccuracyResult => a !== null) : [];
 
         const fuzzyMatchPassed = accuracyResults.filter(
           (a) => a.fuzzy_match.passed
@@ -1951,10 +2006,10 @@ async function runLatencyTests() {
           average: hasValidRuns ? stats.average : null,
           min: hasValidRuns ? stats.min : null,
           max: hasValidRuns ? stats.max : null,
-          successRate:
+          successRate: stats ? 
             (stats.successful_runs /
               (stats.successful_runs + stats.failed_runs)) *
-            100,
+            100 : 0,
           span_averages: hasValidRuns
             ? stats.span_averages
             : {
@@ -2031,6 +2086,33 @@ async function runLatencyTests() {
       argv.output
     )} and ${chalk.cyan(summaryPath)}`
   );
+
+  // Clean up incremental files unless --keep-incremental flag is set
+  if (!argv["keep-incremental"]) {
+    try {
+      const outputBase = argv.output.replace('.json', '');
+      const incrementalFiles = fs.readdirSync('.').filter(file => 
+        file.startsWith(outputBase) && 
+        file.includes('_dev_') && 
+        file.endsWith('.json') &&
+        file !== path.basename(argv.output)
+      );
+      
+      if (incrementalFiles.length > 0) {
+        incrementalFiles.forEach(file => {
+          fs.unlinkSync(file);
+          if (isDebug) {
+            console.log(`🗑️  Cleaned up incremental file: ${file}`);
+          }
+        });
+        console.log(`🧹 Cleaned up ${incrementalFiles.length} incremental files`);
+      }
+    } catch (error) {
+      console.warn(`⚠️  Warning: Could not clean up incremental files: ${error}`);
+    }
+  } else if (isDebug) {
+    console.log(`📁 Incremental files preserved (use --keep-incremental=false to enable cleanup)`);
+  }
 }
 
 async function callPatronusJudge(
@@ -2421,3 +2503,5 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+
