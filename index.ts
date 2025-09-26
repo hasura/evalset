@@ -1843,8 +1843,6 @@ async function runLatencyTests() {
         }, null, 2));
         
         console.log(`💾 Incremental results written to: ${incrementalPath}`);
-        console.log(`🔍 DEBUG: Processed question ${questionIndex + 1}/${questions.length}: "${question.question}"`);
-        console.log(`🔍 DEBUG: Environment name used in filename: ${envConfig.name}`);
 
       } else {
         const questionData = {
@@ -1933,32 +1931,14 @@ async function runLatencyTests() {
   console.log(`${chalk.bold.cyan("-".repeat(80))}`);
 
   // Aggregate results from incremental files for final summary
-  console.log(`🔍 DEBUG: Final aggregation - questions array length: ${questions.length}`);
-  
   // Load all incremental files and aggregate into results object for final summary
   const outputBase = argv.output.replace('.json', '');
-  console.log(`🔍 DEBUG: Looking for incremental files with base: ${outputBase}`);
-  console.log(`🔍 DEBUG: Current environments: ${envConfigs.map(e => e.name).join(', ')}`);
-  
-  // Build pattern to match any environment name
-  const allFiles = fs.readdirSync('.');
-  console.log(`🔍 DEBUG: Total files in directory: ${allFiles.length}`);
-  
-  const incrementalFiles = allFiles.filter(file => {
-    const matches = file.startsWith(outputBase) &&
-      file.endsWith('.json') &&
-      !file.includes('_failed.json') &&
-      file !== path.basename(argv.output);
-    
-    if (file.startsWith(outputBase)) {
-      console.log(`🔍 DEBUG: Checking file: ${file}, matches: ${matches}`);
-    }
-    
-    return matches;
-  });
-
-  console.log(`🔍 DEBUG: Found ${incrementalFiles.length} incremental files to aggregate`);
-  console.log(`🔍 DEBUG: Incremental files: ${incrementalFiles.join(', ')}`);
+  const incrementalFiles = fs.readdirSync('.').filter(file =>
+    file.startsWith(outputBase) &&
+    file.endsWith('.json') &&
+    !file.includes('_failed.json') &&
+    file !== path.basename(argv.output)
+  );
 
   // Load all incremental results into memory for final summary generation
   for (const file of incrementalFiles) {
@@ -1968,14 +1948,11 @@ async function runLatencyTests() {
       
       if (data.results && data.question && data.environment) {
         results.environments[data.environment].questions[data.question] = data.results;
-        console.log(`🔍 DEBUG: Loaded question: "${data.question}"`);
       }
     } catch (error) {
-      console.log(`🔍 DEBUG: Error reading file ${file}:`, error);
+      console.error(`Error reading incremental file ${file}:`, error);
     }
   }
-
-  console.log(`🔍 DEBUG: Final aggregation - results object questions count: ${Object.keys(results.environments[envConfigs[0].name].questions).length}`);
 
   for (const question of questions) {
     console.log(
@@ -2091,22 +2068,10 @@ async function runLatencyTests() {
   }
 
   // Save results
-  console.log(`🔍 DEBUG: About to save final results to: ${argv.output}`);
   fs.writeFileSync(argv.output, JSON.stringify(results, null, 2));
-  console.log(`🔍 DEBUG: Final JSON results saved successfully`);
-  
   const summaryPath = argv.output.replace(".json", "_summary.md");
-  console.log(`🔍 DEBUG: About to generate markdown summary to: ${summaryPath}`);
-  
-  try {
-    const summary = generateMarkdownSummary(results, envConfigs);
-    console.log(`🔍 DEBUG: Markdown summary generated, length: ${summary.length} characters`);
-    fs.writeFileSync(summaryPath, summary);
-    console.log(`🔍 DEBUG: Markdown summary saved successfully`);
-  } catch (error) {
-    console.error(`❌ ERROR: Failed to generate/save markdown summary: ${error}`);
-  }
-  
+  const summary = generateMarkdownSummary(results, envConfigs);
+  fs.writeFileSync(summaryPath, summary);
   console.log(
     `\n${chalk.bold.green("✅ Results saved:")} ${chalk.cyan(
       argv.output
@@ -2117,43 +2082,26 @@ async function runLatencyTests() {
   if (!argv["keep-incremental"]) {
     try {
       const outputBase = argv.output.replace('.json', '');
-      console.log(`🔍 DEBUG: Cleanup - looking for files starting with: ${outputBase}`);
+      const incrementalFiles = fs.readdirSync('.').filter(file =>
+        file.startsWith(outputBase) &&
+        file.endsWith('.json') &&
+        file !== path.basename(argv.output)
+      );
       
-      const allFilesForCleanup = fs.readdirSync('.');
-      const incrementalFilesForCleanup = allFilesForCleanup.filter(file => {
-        const shouldDelete = file.startsWith(outputBase) &&
-          file.endsWith('.json') &&
-          file !== path.basename(argv.output) &&
-          !file.endsWith('_summary.md'); // Don't delete summary
-        
-        if (file.startsWith(outputBase)) {
-          console.log(`🔍 DEBUG: Cleanup check - file: ${file}, should delete: ${shouldDelete}`);
-        }
-        
-        return shouldDelete;
-      });
-      
-      console.log(`🔍 DEBUG: Found ${incrementalFilesForCleanup.length} files to clean up`);
-      console.log(`🔍 DEBUG: Files to clean: ${incrementalFilesForCleanup.join(', ')}`);
-      
-      if (incrementalFilesForCleanup.length > 0) {
-        incrementalFilesForCleanup.forEach(file => {
-          try {
-            fs.unlinkSync(file);
+      if (incrementalFiles.length > 0) {
+        incrementalFiles.forEach(file => {
+          fs.unlinkSync(file);
+          if (isDebug) {
             console.log(`🗑️  Cleaned up incremental file: ${file}`);
-          } catch (fileError) {
-            console.error(`❌ ERROR: Failed to delete ${file}: ${fileError}`);
           }
         });
-        console.log(`🧹 Cleaned up ${incrementalFilesForCleanup.length} incremental files`);
-      } else {
-        console.log(`🔍 DEBUG: No incremental files found to clean up`);
+        console.log(`🧹 Cleaned up ${incrementalFiles.length} incremental files`);
       }
     } catch (error) {
       console.warn(`⚠️  Warning: Could not clean up incremental files: ${error}`);
     }
-  } else {
-    console.log(`📁 Incremental files preserved (--keep-incremental flag is set)`);
+  } else if (isDebug) {
+    console.log(`📁 Incremental files preserved (use --keep-incremental=false to enable cleanup)`);
   }
 }
 
