@@ -1843,7 +1843,6 @@ async function runLatencyTests() {
         }, null, 2));
         
         console.log(`💾 Incremental results written to: ${incrementalPath}`);
-        console.log(`🔍 DEBUG: Processed question ${questionIndex + 1}/${questions.length}: "${question.question}"`);
 
       } else {
         const questionData = {
@@ -1932,19 +1931,14 @@ async function runLatencyTests() {
   console.log(`${chalk.bold.cyan("-".repeat(80))}`);
 
   // Aggregate results from incremental files for final summary
-  console.log(`🔍 DEBUG: Final aggregation - questions array length: ${questions.length}`);
-  
   // Load all incremental files and aggregate into results object for final summary
   const outputBase = argv.output.replace('.json', '');
   const incrementalFiles = fs.readdirSync('.').filter(file =>
     file.startsWith(outputBase) &&
-    file.includes('_dev_') &&
     file.endsWith('.json') &&
     !file.includes('_failed.json') &&
     file !== path.basename(argv.output)
   );
-
-  console.log(`🔍 DEBUG: Found ${incrementalFiles.length} incremental files to aggregate`);
 
   // Load all incremental results into memory for final summary generation
   for (const file of incrementalFiles) {
@@ -1954,14 +1948,11 @@ async function runLatencyTests() {
       
       if (data.results && data.question && data.environment) {
         results.environments[data.environment].questions[data.question] = data.results;
-        console.log(`🔍 DEBUG: Loaded question: "${data.question}"`);
       }
     } catch (error) {
-      console.log(`🔍 DEBUG: Error reading file ${file}:`, error);
+      console.error(`Error reading incremental file ${file}:`, error);
     }
   }
-
-  console.log(`🔍 DEBUG: Final aggregation - results object questions count: ${Object.keys(results.environments[envConfigs[0].name].questions).length}`);
 
   for (const question of questions) {
     console.log(
@@ -2091,9 +2082,8 @@ async function runLatencyTests() {
   if (!argv["keep-incremental"]) {
     try {
       const outputBase = argv.output.replace('.json', '');
-      const incrementalFiles = fs.readdirSync('.').filter(file => 
-        file.startsWith(outputBase) && 
-        file.includes('_dev_') && 
+      const incrementalFiles = fs.readdirSync('.').filter(file =>
+        file.startsWith(outputBase) &&
         file.endsWith('.json') &&
         file !== path.basename(argv.output)
       );

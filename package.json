@@ -1,6 +1,6 @@
 {
   "name": "promptql-latency-test",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Script to measure PromptQL latency",
   "main": "dist/index.js",
   "bin": {
@@ -30,11 +30,13 @@
     "csv-parse": "^5.6.0",
     "csv-stringify": "^6.5.2",
     "dotenv": "^16.4.5",
+    "string-similarity": "^4.0.4",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/chalk": "^2.2.0",
     "@types/node": "^20.11.24",
+    "@types/string-similarity": "^4.0.2",
     "prettier": "^3.5.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
