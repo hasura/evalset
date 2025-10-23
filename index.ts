@@ -8,6 +8,7 @@ import chalk from "chalk";
 import { parse } from "csv-parse/sync";
 import { AccuracyResult, SpanInformation, ExecutionDetail } from "./types";
 import { generateMarkdownSummary } from "./generateMarkdownSummary";
+import { generateSimpleMarkdown } from "./generateSimpleMarkdown";
 
 // Clean error handling
 process.on("uncaughtException", (error) => {
@@ -111,6 +112,10 @@ interface CliArgs {
   "num-batches": number;
   "skip-accuracy": boolean;
   "keep-incremental": boolean;
+  "max-retries": number;
+  "retry-delay": number;
+  "retry-backoff": "linear" | "exponential";
+  "simple": boolean;
   // [key: string]: unknown;
 }
 
@@ -221,9 +226,36 @@ const argv = yargs(hideBin(process.argv))
       "Keep incremental result files after completion (default: false - files are cleaned up)",
     default: false,
   })
+  .option("max-retries", {
+    type: "number",
+    description: "Maximum number of retries for failed API calls",
+    default: 3,
+  })
+  .option("retry-delay", {
+    type: "number",
+    description: "Initial delay in seconds between retries",
+    default: 1,
+  })
+  .option("retry-backoff", {
+    type: "string",
+    description: "Backoff strategy for retries (linear or exponential)",
+    choices: ["linear", "exponential"] as const,
+    default: "exponential" as const,
+  })
+  .option("simple", {
+    type: "boolean",
+    description: "Generate only simple markdown output (questions and responses only, no statistics or technical details)",
+    default: false,
+  })
   .check((argv) => {
     if (!argv.questions && !argv.all) {
       throw new Error("You must specify either --questions or --all");
+    }
+    if (argv["max-retries"] < 0) {
+      throw new Error("max-retries must be a non-negative number");
+    }
+    if (argv["retry-delay"] < 0) {
+      throw new Error("retry-delay must be a non-negative number");
     }
     return true;
   })
@@ -722,8 +754,9 @@ async function getTrace(traceId: string, envConfig: { name: string; config: Retu
   const logger = Logger.getInstance(questions.length, NUM_RUNS);
   logger.logTraceInfo(traceId, envConfig.name);
 
-  const maxRetries = 10;
-  const baseDelay = 1000; // 1 second base delay
+  // Use higher retry count for trace fetching as it may take time for traces to be available
+  const maxRetries = Math.max(10, argv["max-retries"] * 2);
+  const baseDelay = argv["retry-delay"] * 1000; // Convert to milliseconds
   const maxDelay = 30000; // 30 seconds maximum delay
 
   // Get the DDN URL from the environment config
@@ -814,8 +847,13 @@ async function getTrace(traceId: string, envConfig: { name: string; config: Retu
       // If we have traces but no POST:/query span yet, continue retrying
       if (attempt < maxRetries) {
         logger.logRetry(attempt, maxRetries, envConfig.name);
-        // Exponential backoff: 2^(attempt-1) * baseDelay, capped at maxDelay
-        const delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
+        // Use configured backoff strategy
+        let delay: number;
+        if (argv["retry-backoff"] === "exponential") {
+          delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
+        } else {
+          delay = Math.min(attempt * baseDelay, maxDelay);
+        }
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
@@ -824,8 +862,13 @@ async function getTrace(traceId: string, envConfig: { name: string; config: Retu
     // If no traces yet, wait and retry
     if (attempt < maxRetries) {
       logger.logRetry(attempt, maxRetries, envConfig.name);
-      // Exponential backoff: 2^(attempt-1) * baseDelay, capped at maxDelay
-      const delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
+      // Use configured backoff strategy
+      let delay: number;
+      if (argv["retry-backoff"] === "exponential") {
+        delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
+      } else {
+        delay = Math.min(attempt * baseDelay, maxDelay);
+      }
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -874,6 +917,53 @@ function loadSystemPrompt(env: {
     );
     throw new Error(`Failed to read system prompt from ${envPromptPath}`);
   }
+}
+
+// Retry utility function with configurable backoff
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries: number;
+    initialDelay: number;
+    backoffStrategy: "linear" | "exponential";
+    onRetry?: (attempt: number, error: any) => void;
+  }
+): Promise<T> {
+  const { maxRetries, initialDelay, backoffStrategy, onRetry } = options;
+  
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt > maxRetries) {
+        throw error;
+      }
+      
+      if (onRetry) {
+        onRetry(attempt, error);
+      }
+      
+      // Calculate delay based on backoff strategy
+      let delay: number;
+      if (backoffStrategy === "exponential") {
+        // Exponential backoff with jitter
+        delay = initialDelay * Math.pow(2, attempt - 1) * 1000;
+        // Add jitter (±25% of the delay)
+        const jitter = delay * 0.25 * (Math.random() * 2 - 1);
+        delay = Math.max(initialDelay * 1000, delay + jitter);
+        // Cap at 30 seconds
+        delay = Math.min(delay, 30000);
+      } else {
+        // Linear backoff
+        delay = initialDelay * attempt * 1000;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  // This should never be reached due to the throw in the loop
+  throw new Error("Retry logic error");
 }
 
 async function callPromptQL(
@@ -933,12 +1023,31 @@ async function callPromptQL(
   try {
     console.log("Sending question:", question);
 
-    const response = await axios.post(
-      envConfig.config.PROMPTQL_URL!,
-      requestData,
+    // Use retry logic for the main PromptQL API call
+    const response = await retryWithBackoff(
+      async () => {
+        return await axios.post(
+          envConfig.config.PROMPTQL_URL!,
+          requestData,
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+            timeout: 60000, // 60 second timeout
+          }
+        );
+      },
       {
-        headers: {
-          "Content-Type": "application/json",
+        maxRetries: argv["max-retries"],
+        initialDelay: argv["retry-delay"],
+        backoffStrategy: argv["retry-backoff"],
+        onRetry: (attempt, error) => {
+          const errorMessage = axios.isAxiosError(error)
+            ? `Status: ${error.response?.status}, Message: ${error.response?.statusText || error.message}`
+            : error.message;
+          logger.logInfo(
+            `Retrying PromptQL API call (attempt ${attempt}/${argv["max-retries"]}): ${errorMessage}`
+          );
         },
       }
     );
@@ -2067,16 +2176,41 @@ async function runLatencyTests() {
     }
   }
 
-  // Save results
-  fs.writeFileSync(argv.output, JSON.stringify(results, null, 2));
-  const summaryPath = argv.output.replace(".json", "_summary.md");
-  const summary = generateMarkdownSummary(results, envConfigs);
-  fs.writeFileSync(summaryPath, summary);
-  console.log(
-    `\n${chalk.bold.green("✅ Results saved:")} ${chalk.cyan(
-      argv.output
-    )} and ${chalk.cyan(summaryPath)}`
-  );
+  // Save results based on --simple flag
+  if (argv.simple) {
+    // Only generate simple markdown when --simple flag is used
+    const simplePath = argv.output.replace(".json", "_simple.md");
+    
+    // First save temporary JSON for processing (will be deleted)
+    const tempJsonPath = argv.output.replace(".json", "_temp.json");
+    fs.writeFileSync(tempJsonPath, JSON.stringify(results, null, 2));
+    
+    // Generate simple markdown
+    const simpleMarkdown = generateSimpleMarkdown(tempJsonPath);
+    fs.writeFileSync(simplePath, simpleMarkdown);
+    
+    // Clean up temporary JSON file
+    fs.unlinkSync(tempJsonPath);
+    
+    console.log(
+      `\n${chalk.bold.green("✅ Simple output saved:")}\n` +
+      `  📝 Questions & Responses only: ${chalk.cyan(simplePath)}\n` +
+      `  🚫 Excluded: statistics, accuracy metrics, technical details`
+    );
+  } else {
+    // Default behavior: save full results and summary
+    fs.writeFileSync(argv.output, JSON.stringify(results, null, 2));
+    
+    const summaryPath = argv.output.replace(".json", "_summary.md");
+    const summary = generateMarkdownSummary(results, envConfigs);
+    fs.writeFileSync(summaryPath, summary);
+    
+    console.log(
+      `\n${chalk.bold.green("✅ Results saved:")}\n` +
+      `  📊 Full results: ${chalk.cyan(argv.output)}\n` +
+      `  📈 Summary with stats: ${chalk.cyan(summaryPath)}`
+    );
+  }
 
   // Clean up incremental files unless --keep-incremental flag is set
   if (!argv["keep-incremental"]) {
@@ -2452,9 +2586,42 @@ export async function main(args: string[]) {
         "Skip accuracy testing even if Patronus configuration is available",
       default: false,
     })
+    .option("keep-incremental", {
+      type: "boolean",
+      description:
+        "Keep incremental result files after completion (default: false - files are cleaned up)",
+      default: false,
+    })
+    .option("max-retries", {
+      type: "number",
+      description: "Maximum number of retries for failed API calls",
+      default: 3,
+    })
+    .option("retry-delay", {
+      type: "number",
+      description: "Initial delay in seconds between retries",
+      default: 1,
+    })
+    .option("retry-backoff", {
+      type: "string",
+      description: "Backoff strategy for retries (linear or exponential)",
+      choices: ["linear", "exponential"] as const,
+      default: "exponential" as const,
+    })
+    .option("simple", {
+      type: "boolean",
+      description: "Generate only simple markdown output (questions and responses only, no statistics or technical details)",
+      default: false,
+    })
     .check((argv) => {
       if (!argv.questions && !argv.all) {
         throw new Error("You must specify either --questions or --all");
+      }
+      if ((argv as any)["max-retries"] < 0) {
+        throw new Error("max-retries must be a non-negative number");
+      }
+      if ((argv as any)["retry-delay"] < 0) {
+        throw new Error("retry-delay must be a non-negative number");
       }
       return true;
     })
