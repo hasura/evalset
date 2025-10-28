@@ -1001,7 +1001,7 @@ async function callPromptQL(
     llm: {
       provider: "hasura",
         specificLlm: {
-          provider: vertex
+          provider: vertex,
           model: claude-sonnet-4-20250514
         },
     },
