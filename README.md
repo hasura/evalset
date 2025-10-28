@@ -309,6 +309,7 @@ npx promptql-latency-test --env dev,staging,production --runs 3 --all
 - `--num-batches`: Number of batches to run (default: 1)
 - `--skip-accuracy`: Skip accuracy testing even if Patronus configuration is available (default: false)
 - `--keep-incremental`: Keep incremental result files after completion (default: false - files are cleaned up)
+- `--simple`: Additionally generate simple markdown output (questions and responses only) alongside full results (default: false)
 
 ### Incremental Results Writing and Cleanup
 
@@ -473,10 +474,11 @@ DEBUG=true npx promptql-latency-test --env dev --runs 3 --all
 
 ## Test Results
 
-The script generates two output files:
+The script generates the following output files:
 
-1. JSON file with raw results
-2. Markdown summary with formatted analysis
+1. **JSON file** with raw results (always generated)
+2. **Markdown summary** with formatted analysis (always generated)
+3. **Simple markdown** with questions and responses only (generated when `--simple` flag is used)
 
 ### Results Include
 
@@ -505,6 +507,26 @@ The script generates two output files:
    - Accuracy metrics
    - Component performance
    - Failure details
+
+### Simple Output Mode
+
+When using the `--simple` flag, the script generates an additional simplified markdown file that contains:
+- Questions and their responses only
+- No statistics, metrics, or technical details
+- Clean, readable format for non-technical stakeholders
+
+**Usage:**
+```bash
+# Generate full results PLUS simple markdown
+npx promptql-latency-test --env dev --runs 3 --all --simple
+```
+
+**Output files:**
+- `latency_results_[timestamp].json` - Full JSON results (always generated)
+- `latency_results_[timestamp]_summary.md` - Detailed markdown summary with statistics (always generated)
+- `latency_results_[timestamp]_simple.md` - Simple markdown with Q&A only (generated with --simple flag)
+
+This additive approach ensures you always have complete data for analysis while also providing a simplified view when needed.
 
 ## Data Structure
 

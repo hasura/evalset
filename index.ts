@@ -244,7 +244,7 @@ const argv = yargs(hideBin(process.argv))
   })
   .option("simple", {
     type: "boolean",
-    description: "Generate only simple markdown output (questions and responses only, no statistics or technical details)",
+    description: "Additionally generate simple markdown output (questions and responses only) alongside full results",
     default: false,
   })
   .check((argv) => {
@@ -2201,35 +2201,26 @@ async function runLatencyTests() {
     }
   }
 
-  // Save results based on --simple flag
+  // Always save full results and summary
+  fs.writeFileSync(argv.output, JSON.stringify(results, null, 2));
+  
+  const summaryPath = argv.output.replace(".json", "_summary.md");
+  const summary = generateMarkdownSummary(results, envConfigs);
+  fs.writeFileSync(summaryPath, summary);
+  
+  // Additionally generate simple markdown when --simple flag is used
   if (argv.simple) {
-    // Only generate simple markdown when --simple flag is used
     const simplePath = argv.output.replace(".json", "_simple.md");
-    
-    // First save temporary JSON for processing (will be deleted)
-    const tempJsonPath = argv.output.replace(".json", "_temp.json");
-    fs.writeFileSync(tempJsonPath, JSON.stringify(results, null, 2));
-    
-    // Generate simple markdown
-    const simpleMarkdown = generateSimpleMarkdown(tempJsonPath);
+    const simpleMarkdown = generateSimpleMarkdown(argv.output);
     fs.writeFileSync(simplePath, simpleMarkdown);
     
-    // Clean up temporary JSON file
-    fs.unlinkSync(tempJsonPath);
-    
     console.log(
-      `\n${chalk.bold.green("✅ Simple output saved:")}\n` +
-      `  📝 Questions & Responses only: ${chalk.cyan(simplePath)}\n` +
-      `  🚫 Excluded: statistics, accuracy metrics, technical details`
+      `\n${chalk.bold.green("✅ Results saved:")}\n` +
+      `  📊 Full results: ${chalk.cyan(argv.output)}\n` +
+      `  📈 Summary with stats: ${chalk.cyan(summaryPath)}\n` +
+      `  📝 Simple output (questions & responses only): ${chalk.cyan(simplePath)}`
     );
   } else {
-    // Default behavior: save full results and summary
-    fs.writeFileSync(argv.output, JSON.stringify(results, null, 2));
-    
-    const summaryPath = argv.output.replace(".json", "_summary.md");
-    const summary = generateMarkdownSummary(results, envConfigs);
-    fs.writeFileSync(summaryPath, summary);
-    
     console.log(
       `\n${chalk.bold.green("✅ Results saved:")}\n` +
       `  📊 Full results: ${chalk.cyan(argv.output)}\n` +
@@ -2635,7 +2626,7 @@ export async function main(args: string[]) {
     })
     .option("simple", {
       type: "boolean",
-      description: "Generate only simple markdown output (questions and responses only, no statistics or technical details)",
+      description: "Additionally generate simple markdown output (questions and responses only) alongside full results",
       default: false,
     })
     .check((argv) => {
