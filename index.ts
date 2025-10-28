@@ -276,6 +276,8 @@ const getEnvironmentConfig = (env: {
       DDN_URL: process.env.DDN_URL_DEV,
       DDN_AUTH_TOKEN: process.env.DDN_AUTH_TOKEN_DEV,
       HASURA_PAT: process.env.HASURA_PAT_DEV,
+      SPECIFIC_LLM_PROVIDER: process.env.SPECIFIC_LLM_PROVIDER_DEV,
+      SPECIFIC_LLM_MODEL: process.env.SPECIFIC_LLM_MODEL_DEV,
       PATRONUS_BASE_URL: process.env.PATRONUS_BASE_URL,
       PATRONUS_API_KEY: process.env.PATRONUS_API_KEY,
       PATRONUS_PROJECT_ID: process.env.PATRONUS_PROJECT_ID,
@@ -286,6 +288,8 @@ const getEnvironmentConfig = (env: {
       DDN_URL: process.env.DDN_URL_STAGING,
       DDN_AUTH_TOKEN: process.env.DDN_AUTH_TOKEN_STAGING,
       HASURA_PAT: process.env.HASURA_PAT_STAGING,
+      SPECIFIC_LLM_PROVIDER: process.env.SPECIFIC_LLM_PROVIDER_STAGING,
+      SPECIFIC_LLM_MODEL: process.env.SPECIFIC_LLM_MODEL_STAGING,
       PATRONUS_BASE_URL: process.env.PATRONUS_BASE_URL,
       PATRONUS_API_KEY: process.env.PATRONUS_API_KEY,
       PATRONUS_PROJECT_ID: process.env.PATRONUS_PROJECT_ID,
@@ -296,6 +300,8 @@ const getEnvironmentConfig = (env: {
       DDN_URL: process.env.DDN_URL_PRODUCTION,
       DDN_AUTH_TOKEN: process.env.DDN_AUTH_TOKEN_PRODUCTION,
       HASURA_PAT: process.env.HASURA_PAT_PRODUCTION,
+      SPECIFIC_LLM_PROVIDER: process.env.SPECIFIC_LLM_PROVIDER_PRODUCTION,
+      SPECIFIC_LLM_MODEL: process.env.SPECIFIC_LLM_MODEL_PRODUCTION,
       PATRONUS_BASE_URL: process.env.PATRONUS_BASE_URL,
       PATRONUS_API_KEY: process.env.PATRONUS_API_KEY,
       PATRONUS_PROJECT_ID: process.env.PATRONUS_PROJECT_ID,
@@ -995,12 +1001,30 @@ async function callPromptQL(
     displayName: envConfig.name,
   });
 
+  // Build LLM configuration with optional specificLlm field
+  const llmConfig: { provider: string; specificLlm?: { provider: string; model: string } } = {
+    provider: "hasura",
+  };
+  
+  // Add specificLlm - use environment variables if provided, otherwise use default
+  if (envConfig.config.SPECIFIC_LLM_PROVIDER && envConfig.config.SPECIFIC_LLM_MODEL) {
+    // Use environment-specific LLM configuration
+    llmConfig.specificLlm = {
+      provider: envConfig.config.SPECIFIC_LLM_PROVIDER,
+      model: envConfig.config.SPECIFIC_LLM_MODEL,
+    };
+  } else {
+    // Use default Anthropic Claude when no specific LLM is configured
+    llmConfig.specificLlm = {
+      provider: "anthropic",
+      model: "claude-sonnet-4-20250514",
+    };
+  }
+
   const requestData = {
-    version: "v1",
+    version: "v2",  // Updated to v2
     promptql_api_key: envConfig.config.PROMPTQL_API_KEY,
-    llm: {
-      provider: "hasura",
-    },
+    llm: llmConfig,
     ddn: {
       url: envConfig.config.DDN_URL,
       headers: {

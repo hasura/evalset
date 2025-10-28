@@ -3,6 +3,8 @@
 [![GitHub](https://img.shields.io/github/license/hasura/evalset)](https://github.com/hasura/evalset)
 [![GitHub](https://img.shields.io/github/stars/hasura/evalset)](https://github.com/hasura/evalset)
 
+> **Note**: This suite now uses **v2** of the Natural Language API with support for specific LLM model configuration.
+
 ## Overview
 
 This testing suite provides comprehensive performance and accuracy testing for PromptQL across different environments. It measures latency, component performance, and answer accuracy using Patronus judges.
@@ -43,6 +45,18 @@ This testing suite provides comprehensive performance and accuracy testing for P
   DDN_URL_PRODUCTION="https://app-production.private-ddn.hasura.app/v1/sql"
   DDN_AUTH_TOKEN_PRODUCTION="your-production-ddn-auth-token"
   HASURA_PAT_PRODUCTION="your-production-hasura-pat"
+
+  # LLM Configuration (optional, per environment)
+  # Both provider and model must be set for custom LLM configuration
+  # If not provided, defaults to anthropic/claude-sonnet-4-20250514
+  SPECIFIC_LLM_PROVIDER_DEV="openai"
+  SPECIFIC_LLM_MODEL_DEV="gpt-4"
+  
+  SPECIFIC_LLM_PROVIDER_STAGING="openai"
+  SPECIFIC_LLM_MODEL_STAGING="gpt-4"
+  
+  SPECIFIC_LLM_PROVIDER_PRODUCTION="anthropic"
+  SPECIFIC_LLM_MODEL_PRODUCTION="claude-3-opus-20240229"
 
   # Patronus Configuration (optional, shared across environments)
   # If not provided, the script will run latency tests only
@@ -211,7 +225,19 @@ This is equivalent to using `npx promptql-latency-test` but runs directly from y
    DDN_URL_PRODUCTION="https://app-production.private-ddn.hasura.app/v1/sql"
    DDN_AUTH_TOKEN_PRODUCTION="your-production-ddn-auth-token"
    HASURA_PAT_PRODUCTION="your-production-hasura-pat"
-
+ 
+   # LLM Configuration (optional, per environment)
+   # Both provider and model must be set for custom LLM configuration
+   # If not provided, defaults to anthropic/claude-sonnet-4-20250514
+   SPECIFIC_LLM_PROVIDER_DEV="openai"
+   SPECIFIC_LLM_MODEL_DEV="gpt-4"
+   
+   SPECIFIC_LLM_PROVIDER_STAGING="openai"
+   SPECIFIC_LLM_MODEL_STAGING="gpt-4"
+   
+   SPECIFIC_LLM_PROVIDER_PRODUCTION="anthropic"
+   SPECIFIC_LLM_MODEL_PRODUCTION="claude-3-opus-20240229"
+ 
    # Patronus Configuration (optional, shared across environments)
    # If not provided, the script will run latency tests only
    PATRONUS_BASE_URL="patronus-backend.internal.example.com"
@@ -538,7 +564,91 @@ The script includes comprehensive error handling:
 4. Push to the branch
 5. Create a Pull Request
 
+## Technical Details
+
+### API Integration
+
+The suite integrates with:
+- **PromptQL API v2**: For natural language query processing with configurable LLM models
+- **DDN (Data Delivery Network)**: For data access
+- **Hasura GraphQL**: For trace data retrieval
+- **Patronus API**: For accuracy evaluation (optional)
+
+### API Version
+
+This suite uses **v2** of the Natural Language API, which includes:
+- Enhanced LLM configuration with `specificLlm` field support
+- Improved performance and reliability
+- Backward compatibility with v1 features
+
+### LLM Configuration
+
+The v2 API allows you to specify which LLM provider and model to use via the `specificLlm` field. This is configured per environment using separate provider and model environment variables:
+
+**Development Environment:**
+- `SPECIFIC_LLM_PROVIDER_DEV`: LLM provider (e.g., "openai", "anthropic")
+- `SPECIFIC_LLM_MODEL_DEV`: Model name (e.g., "gpt-4", "claude-3-opus-20240229")
+
+**Staging Environment:**
+- `SPECIFIC_LLM_PROVIDER_STAGING`: LLM provider
+- `SPECIFIC_LLM_MODEL_STAGING`: Model name
+
+**Production Environment:**
+- `SPECIFIC_LLM_PROVIDER_PRODUCTION`: LLM provider
+- `SPECIFIC_LLM_MODEL_PRODUCTION`: Model name
+
+**Default Behavior:**
+- If no environment variables are set, the system defaults to: `anthropic/claude-sonnet-4-20250514`
+- Both provider and model must be set together for custom configuration
+- If only one is set (incomplete configuration), the default will be used
+
+**Example Providers and Models:**
+- **OpenAI**: provider="openai", models="gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo"
+- **Anthropic**: provider="anthropic", models="claude-3-opus-20240229", "claude-3-sonnet-20240229"
+- **Azure**: provider="azure", models="gpt-4", "gpt-35-turbo"
+- **Cohere**: provider="cohere", models="command", "command-light"
+
+**Request Structure:**
+```json
+{
+  "version": "v2",
+  "llm": {
+    "provider": "hasura",
+    "specificLlm": {
+      "provider": "openai",  // or defaults to "anthropic"
+      "model": "gpt-4"       // or defaults to "claude-sonnet-4-20250514"
+    }
+  }
+}
+```
+
+**Default Configuration (when no env vars are set):**
+```json
+{
+  "version": "v2",
+  "llm": {
+    "provider": "hasura",
+    "specificLlm": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-20250514"
+    }
+  }
+}
+```
+
 ## Version History
+
+### v2.0.0 - Natural Language API v2 Support
+
+**New Features:**
+- **API v2 Support**: Updated to use v2 of the Natural Language API
+- **Specific LLM Configuration**: Added support for `specificLlm` field with provider and model properties
+- **Per-Environment LLM Settings**: Configure different LLM providers and models for each environment
+
+**Technical Improvements:**
+- **Enhanced Model Selection**: Fine-grained control over both LLM provider and model
+- **Improved API Compatibility**: Full support for v2 API features with proper `specificLlm` object structure
+- **Backward Compatibility**: Maintains compatibility with existing test suites (specificLlm is optional)
 
 ### v1.0.10 - Memory-Efficient Processing
 
