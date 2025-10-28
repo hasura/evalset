@@ -1023,7 +1023,7 @@ async function callPromptQL(
 
   const requestData = {
     version: "v2",  // Updated to v2
-    promptql_api_key: envConfig.config.PROMPTQL_API_KEY,
+    // Removed promptql_api_key from request body - now sent in Authorization header
     llm: llmConfig,
     ddn: {
       url: envConfig.config.DDN_URL,
@@ -1056,6 +1056,7 @@ async function callPromptQL(
           {
             headers: {
               "Content-Type": "application/json",
+              "Authorization": `Bearer ${envConfig.config.PROMPTQL_API_KEY}`,
             },
             timeout: 60000, // 60 second timeout
           }

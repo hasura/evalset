@@ -578,8 +578,16 @@ The suite integrates with:
 
 This suite uses **v2** of the Natural Language API, which includes:
 - Enhanced LLM configuration with `specificLlm` field support
+- Bearer token authentication in Authorization header
 - Improved performance and reliability
 - Backward compatibility with v1 features
+
+### Authentication
+
+The v2 API requires authentication via Bearer token in the Authorization header:
+- **Header Format**: `Authorization: Bearer ${PROMPTQL_API_KEY}`
+- **No longer in request body**: The `promptql_api_key` field has been removed from the request payload
+- **Per-environment keys**: Each environment uses its own API key (e.g., `PROMPTQL_API_KEY_DEV`, `PROMPTQL_API_KEY_STAGING`, `PROMPTQL_API_KEY_PRODUCTION`)
 
 ### LLM Configuration
 
@@ -644,10 +652,13 @@ The v2 API allows you to specify which LLM provider and model to use via the `sp
 - **API v2 Support**: Updated to use v2 of the Natural Language API
 - **Specific LLM Configuration**: Added support for `specificLlm` field with provider and model properties
 - **Per-Environment LLM Settings**: Configure different LLM providers and models for each environment
+- **Bearer Token Authentication**: API key now sent as Bearer token in Authorization header
 
 **Technical Improvements:**
 - **Enhanced Model Selection**: Fine-grained control over both LLM provider and model
 - **Improved API Compatibility**: Full support for v2 API features with proper `specificLlm` object structure
+- **Secure Authentication**: API key moved from request body to Authorization header for better security
+- **Default LLM Configuration**: Automatically uses anthropic/claude-sonnet-4-20250514 when no custom LLM is configured
 - **Backward Compatibility**: Maintains compatibility with existing test suites (specificLlm is optional)
 
 ### v1.0.10 - Memory-Efficient Processing
