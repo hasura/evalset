@@ -1000,6 +1000,10 @@ async function callPromptQL(
     promptql_api_key: envConfig.config.PROMPTQL_API_KEY,
     llm: {
       provider: "hasura",
+        specificLlm: {
+          provider: vertex
+          model: claude-sonnet-4-20250514
+        },
     },
     ddn: {
       url: envConfig.config.DDN_URL,
