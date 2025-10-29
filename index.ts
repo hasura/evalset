@@ -116,6 +116,7 @@ interface CliArgs {
   "retry-delay": number;
   "retry-backoff": "linear" | "exponential";
   "simple": boolean;
+  "timeout": number;
   // [key: string]: unknown;
 }
 
@@ -247,6 +248,11 @@ const argv = yargs(hideBin(process.argv))
     description: "Additionally generate simple markdown output (questions and responses only) alongside full results",
     default: false,
   })
+  .option("timeout", {
+    type: "number",
+    description: "API request timeout in seconds",
+    default: 60,
+  })
   .check((argv) => {
     if (!argv.questions && !argv.all) {
       throw new Error("You must specify either --questions or --all");
@@ -256,6 +262,9 @@ const argv = yargs(hideBin(process.argv))
     }
     if (argv["retry-delay"] < 0) {
       throw new Error("retry-delay must be a non-negative number");
+    }
+    if (argv["timeout"] <= 0) {
+      throw new Error("timeout must be a positive number");
     }
     return true;
   })
@@ -1062,7 +1071,7 @@ async function callPromptQL(
               "Content-Type": "application/json",
               "Authorization": `Bearer ${envConfig.config.PROMPTQL_API_KEY}`,
             },
-            timeout: 60000, // 60 second timeout
+            timeout: argv["timeout"] * 1000, // Convert seconds to milliseconds
           }
         );
       },
@@ -2405,7 +2414,7 @@ async function callPatronusJudge(
             "X-API-KEY": envConfig.config.PATRONUS_API_KEY,
             "X-Project-ID": envConfig.config.PATRONUS_PROJECT_ID,
           },
-          timeout: 30000, // 30 second timeout
+          timeout: Math.max(30000, argv["timeout"] * 500), // Use half of main timeout or 30s minimum for Patronus
         }
       );
 
@@ -2667,6 +2676,11 @@ export async function main(args: string[]) {
       description: "Additionally generate simple markdown output (questions and responses only) alongside full results",
       default: false,
     })
+    .option("timeout", {
+      type: "number",
+      description: "API request timeout in seconds",
+      default: 60,
+    })
     .check((argv) => {
       if (!argv.questions && !argv.all) {
         throw new Error("You must specify either --questions or --all");
@@ -2676,6 +2690,9 @@ export async function main(args: string[]) {
       }
       if ((argv as any)["retry-delay"] < 0) {
         throw new Error("retry-delay must be a non-negative number");
+      }
+      if ((argv as any)["timeout"] <= 0) {
+        throw new Error("timeout must be a positive number");
       }
       return true;
     })

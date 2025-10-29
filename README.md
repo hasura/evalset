@@ -310,6 +310,7 @@ npx promptql-latency-test --env dev,staging,production --runs 3 --all
 - `--skip-accuracy`: Skip accuracy testing even if Patronus configuration is available (default: false)
 - `--keep-incremental`: Keep incremental result files after completion (default: false - files are cleaned up)
 - `--simple`: Additionally generate simple markdown output (questions and responses only) alongside full results (default: false)
+- `--timeout`: API request timeout in seconds (default: 60)
 
 ### Incremental Results Writing and Cleanup
 
