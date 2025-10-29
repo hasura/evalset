@@ -2088,7 +2088,14 @@ async function runLatencyTests() {
     }
   }
 
-  for (const question of questions) {
+  // Track failed questions across all environments
+  const failedQuestions: { [env: string]: number[] } = {};
+  for (const envConfig of envConfigs) {
+    failedQuestions[envConfig.name] = [];
+  }
+
+  for (const [index, question] of questions.entries()) {
+    const questionNumber = index + 1; // 1-based question numbering
     console.log(
       `\n${chalk.bold("❓ Question:")} ${chalk.yellow(question.question)}`
     );
@@ -2098,6 +2105,11 @@ async function runLatencyTests() {
         const stats =
           results.environments[envConfig.name].questions[question.question];
         const hasValidRuns = stats && stats.successful_runs > 0;
+
+        // Track if this question failed for this environment
+        if (!stats || stats.successful_runs === 0) {
+          failedQuestions[envConfig.name].push(questionNumber);
+        }
 
         // Calculate accuracy metrics
         const accuracyResults = stats ? stats.runs
@@ -2199,6 +2211,26 @@ async function runLatencyTests() {
           }`
       );
     }
+  }
+
+  // Display failed questions summary
+  console.log(`\n${chalk.bold.cyan("=".repeat(80))}`);
+  console.log(`${chalk.bold.red("❌ Failed Questions Summary")}`);
+  console.log(`${chalk.bold.cyan("-".repeat(80))}`);
+  
+  let hasFailures = false;
+  for (const envConfig of envConfigs) {
+    if (failedQuestions[envConfig.name].length > 0) {
+      hasFailures = true;
+      const failedList = failedQuestions[envConfig.name].sort((a, b) => a - b);
+      console.log(
+        `${chalk.bold(envConfig.name)}: ${chalk.red(`Questions ${failedList.join(", ")} failed`)}`
+      );
+    }
+  }
+  
+  if (!hasFailures) {
+    console.log(chalk.green("✅ All questions completed successfully across all environments!"));
   }
 
   // Always save full results and summary
