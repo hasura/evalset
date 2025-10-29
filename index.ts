@@ -457,16 +457,20 @@ console.log(`Total questions available: ${allQuestions.length}`);
 console.log(`Requested questions: ${RUN_ALL ? "all" : argv.questions}`);
 console.log(`Requested runs per question: ${NUM_RUNS}`);
 
-// Validate and select questions
+// Validate and select questions - now tracking original question numbers
 let questions: typeof allQuestions;
+let questionNumbers: number[]; // Track the original question numbers from evalset.csv
+
 if (RUN_ALL) {
   questions = allQuestions;
+  // For "all", question numbers are 1 through N
+  questionNumbers = Array.from({ length: allQuestions.length }, (_, i) => i + 1);
 } else {
   if (!argv.questions) {
     throw new Error("Questions argument is required when not using --all");
   }
 
-  const questionNumbers = parseQuestionSelection(argv.questions, allQuestions);
+  questionNumbers = parseQuestionSelection(argv.questions, allQuestions);
 
   if (questionNumbers.length === 0) {
     throw new Error(`No matching questions found for: ${argv.questions}`);
@@ -499,7 +503,7 @@ console.log(
   `Will run ${questions.length} question${questions.length === 1 ? "" : "s"}:`
 );
 questions.forEach((q: Question, i: number) =>
-  console.log(`  ${i + 1}. ${q.question}`)
+  console.log(`  ${questionNumbers[i]}. ${q.question}`)
 );
 
 // Create a logger class to manage output
@@ -533,8 +537,8 @@ class Logger {
     return Logger.instance;
   }
 
-  private formatQuestionHeader(questionIndex: number): string {
-    return chalk.bold.cyan(`Q${questionIndex + 1}/${this.totalQuestions}`);
+  formatQuestionHeader(questionNumber: number): string {
+    return chalk.bold.cyan(`Q${questionNumber}/${this.totalQuestions}`);
   }
 
   private formatRunHeader(runNumber: number): string {
@@ -561,11 +565,11 @@ class Logger {
     );
   }
 
-  startQuestion(question: string, questionIndex: number) {
-    this.currentQuestionIndex = questionIndex;
+  startQuestion(question: string, questionNumber: number) {
+    this.currentQuestionIndex = questionNumber;
     console.log(
       `\n${chalk.bold.cyan("=".repeat(80))}\n${chalk.bold.cyan(
-        "🤔 Question:"
+        "🤔 Question #" + questionNumber + ":"
       )} ${chalk.yellow(question)}`
     );
   }
@@ -1808,8 +1812,8 @@ async function runLatencyTests() {
   // Note: Environment structure is now initialized in the streaming writer
 
   // Process questions in batches
-  const processQuestion = async (question: Question, questionIndex: number) => {
-    logger.startQuestion(question.question, questionIndex);
+  const processQuestion = async (question: Question, questionIndex: number, questionNumber: number) => {
+    logger.startQuestion(question.question, questionNumber);
 
     // Run tests for each environment
     for (const envConfig of envConfigs) {
@@ -1968,11 +1972,12 @@ async function runLatencyTests() {
         };
 
         // Write incrementally to reduce memory usage (don't store in memory)
-        const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_${questionIndex}.json`);
+        const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_Q${questionNumber}.json`);
         fs.writeFileSync(incrementalPath, JSON.stringify({
           metadata: { timestamp: new Date().toISOString() },
           environment: envConfig.name,
           question: question.question,
+          questionNumber: questionNumber,
           results: questionData
         }, null, 2));
         
@@ -2007,11 +2012,12 @@ async function runLatencyTests() {
         };
 
         // Write incrementally to reduce memory usage (failed case, don't store in memory)
-        const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_${questionIndex}_failed.json`);
+        const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_Q${questionNumber}_failed.json`);
         fs.writeFileSync(incrementalPath, JSON.stringify({
           metadata: { timestamp: new Date().toISOString() },
           environment: envConfig.name,
           question: question.question,
+          questionNumber: questionNumber,
           results: questionData
         }, null, 2));
         
@@ -2022,8 +2028,8 @@ async function runLatencyTests() {
 
   // Process all questions using the batch processor
   await batchProcessor.processBatches(
-    questions.map((q, i) => ({ question: q, index: i })),
-    ({ question, index }) => processQuestion(question, index)
+    questions.map((q, i) => ({ question: q, index: i, number: questionNumbers[i] })),
+    ({ question, index, number }) => processQuestion(question, index, number)
   );
 
 
@@ -2095,9 +2101,9 @@ async function runLatencyTests() {
   }
 
   for (const [index, question] of questions.entries()) {
-    const questionNumber = index + 1; // 1-based question numbering
+    const questionNumber = questionNumbers[index]; // Use the actual question number from evalset.csv
     console.log(
-      `\n${chalk.bold("❓ Question:")} ${chalk.yellow(question.question)}`
+      `\n${chalk.bold("❓ Question #" + questionNumber + ":")} ${chalk.yellow(question.question)}`
     );
 
     const envStats = envConfigs
