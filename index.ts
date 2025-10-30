@@ -2090,13 +2090,25 @@ async function runLatencyTests() {
   );
 
   // Load all incremental results into memory for final summary generation
+  // Also build a map of question numbers
+  const questionNumberMap: Map<string, number> = new Map();
+  
   for (const file of incrementalFiles) {
     try {
       const content = fs.readFileSync(file, 'utf-8');
       const data = JSON.parse(content);
       
       if (data.results && data.question && data.environment) {
-        results.environments[data.environment].questions[data.question] = data.results;
+        // Store the results with the question number
+        results.environments[data.environment].questions[data.question] = {
+          ...data.results,
+          questionNumber: data.questionNumber
+        };
+        
+        // Track question numbers for the summary
+        if (data.questionNumber) {
+          questionNumberMap.set(data.question, data.questionNumber);
+        }
       }
     } catch (error) {
       console.error(`Error reading incremental file ${file}:`, error);
@@ -2252,13 +2264,13 @@ async function runLatencyTests() {
   fs.writeFileSync(argv.output, JSON.stringify(results, null, 2));
   
   const summaryPath = argv.output.replace(".json", "_summary.md");
-  const summary = generateMarkdownSummary(results, envConfigs);
+  const summary = generateMarkdownSummary(results, envConfigs, questionNumberMap);
   fs.writeFileSync(summaryPath, summary);
   
   // Additionally generate simple markdown when --simple flag is used
   if (argv.simple) {
     const simplePath = argv.output.replace(".json", "_simple.md");
-    const simpleMarkdown = generateSimpleMarkdown(argv.output);
+    const simpleMarkdown = generateSimpleMarkdown(argv.output, questionNumberMap);
     fs.writeFileSync(simplePath, simpleMarkdown);
     
     console.log(

@@ -2,10 +2,31 @@ import { AccuracyResult } from "./types";
 
 export function generateMarkdownSummary(
   results: any,
-  envConfigs: any[]
+  envConfigs: any[],
+  questionNumberMap?: Map<string, number>
 ): string {
   const { metadata, environments } = results;
-  const questions = Object.keys(environments[envConfigs[0].name].questions);
+  
+  // Build a map of questions with their numbers
+  const questionMap: Map<string, number> = new Map();
+  const firstEnv = environments[envConfigs[0].name];
+  
+  // Extract question numbers from the stored data or use the passed map
+  for (const [questionText, questionData] of Object.entries(firstEnv.questions)) {
+    if (questionNumberMap && questionNumberMap.has(questionText)) {
+      questionMap.set(questionText, questionNumberMap.get(questionText)!);
+    } else if ((questionData as any).questionNumber) {
+      questionMap.set(questionText, (questionData as any).questionNumber);
+    } else {
+      // Default to sequential if not found
+      questionMap.set(questionText, questionMap.size + 1);
+    }
+  }
+  
+  // Sort questions by their number
+  const questions = Array.from(questionMap.entries())
+    .sort((a, b) => a[1] - b[1])
+    .map(entry => entry[0]);
 
   // Calculate overall statistics
   const totalRuns = metadata.num_runs * questions.length * envConfigs.length;
@@ -254,7 +275,17 @@ ${Array.from(allFailureReasons.values())
 `;
   }
 
+  // Create table of contents with links
+  let tableOfContents = "## Table of Contents\n\n";
+  questions.forEach((question) => {
+    const questionNumber = questionMap.get(question) || 1;
+    const anchorId = `question-${questionNumber}`;
+    tableOfContents += `- [Question ${questionNumber}: ${question}](#${anchorId})\n`;
+  });
+
   let summary = `# Latency Test Results
+
+${tableOfContents}
 
 ## Overall Statistics
 - **Total Questions**: ${questions.length}
@@ -358,9 +389,12 @@ ${envStats
 ## Per-Question Analysis
 `;
 
-  // Add per-question analysis
-  questions.forEach((question) => {
-    summary += `\n### Question: ${question}\n\n`;
+  // Add per-question analysis with question numbers and anchor IDs
+  questions.forEach((question, index) => {
+    const questionNumber = questionMap.get(question) || (index + 1);
+    const anchorId = `question-${questionNumber}`;
+    summary += `\n<a id="${anchorId}"></a>\n\n### Question ${questionNumber}: ${question}\n\n`;
+    summary += `[↑ Back to Table of Contents](#table-of-contents)\n\n`;
 
     // Environment comparison for this question
     const questionEnvStats = envConfigs
