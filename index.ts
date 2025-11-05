@@ -8,6 +8,7 @@ import chalk from "chalk";
 import { parse } from "csv-parse/sync";
 import { AccuracyResult, SpanInformation, ExecutionDetail } from "./types";
 import { generateMarkdownSummary } from "./generateMarkdownSummary";
+import { generateSimpleMarkdown } from "./generateSimpleMarkdown";
 
 // Clean error handling
 process.on("uncaughtException", (error) => {
@@ -111,6 +112,11 @@ interface CliArgs {
   "num-batches": number;
   "skip-accuracy": boolean;
   "keep-incremental": boolean;
+  "max-retries": number;
+  "retry-delay": number;
+  "retry-backoff": "linear" | "exponential";
+  "simple": boolean;
+  "timeout": number;
   // [key: string]: unknown;
 }
 
@@ -221,9 +227,44 @@ const argv = yargs(hideBin(process.argv))
       "Keep incremental result files after completion (default: false - files are cleaned up)",
     default: false,
   })
+  .option("max-retries", {
+    type: "number",
+    description: "Maximum number of retries for failed API calls",
+    default: 3,
+  })
+  .option("retry-delay", {
+    type: "number",
+    description: "Initial delay in seconds between retries",
+    default: 1,
+  })
+  .option("retry-backoff", {
+    type: "string",
+    description: "Backoff strategy for retries (linear or exponential)",
+    choices: ["linear", "exponential"] as const,
+    default: "exponential" as const,
+  })
+  .option("simple", {
+    type: "boolean",
+    description: "Additionally generate simple markdown output (questions and responses only) alongside full results",
+    default: false,
+  })
+  .option("timeout", {
+    type: "number",
+    description: "API request timeout in seconds",
+    default: 60,
+  })
   .check((argv) => {
     if (!argv.questions && !argv.all) {
       throw new Error("You must specify either --questions or --all");
+    }
+    if (argv["max-retries"] < 0) {
+      throw new Error("max-retries must be a non-negative number");
+    }
+    if (argv["retry-delay"] < 0) {
+      throw new Error("retry-delay must be a non-negative number");
+    }
+    if (argv["timeout"] <= 0) {
+      throw new Error("timeout must be a positive number");
     }
     return true;
   })
@@ -244,6 +285,8 @@ const getEnvironmentConfig = (env: {
       DDN_URL: process.env.DDN_URL_DEV,
       DDN_AUTH_TOKEN: process.env.DDN_AUTH_TOKEN_DEV,
       HASURA_PAT: process.env.HASURA_PAT_DEV,
+      SPECIFIC_LLM_PROVIDER: process.env.SPECIFIC_LLM_PROVIDER_DEV,
+      SPECIFIC_LLM_MODEL: process.env.SPECIFIC_LLM_MODEL_DEV,
       PATRONUS_BASE_URL: process.env.PATRONUS_BASE_URL,
       PATRONUS_API_KEY: process.env.PATRONUS_API_KEY,
       PATRONUS_PROJECT_ID: process.env.PATRONUS_PROJECT_ID,
@@ -254,6 +297,8 @@ const getEnvironmentConfig = (env: {
       DDN_URL: process.env.DDN_URL_STAGING,
       DDN_AUTH_TOKEN: process.env.DDN_AUTH_TOKEN_STAGING,
       HASURA_PAT: process.env.HASURA_PAT_STAGING,
+      SPECIFIC_LLM_PROVIDER: process.env.SPECIFIC_LLM_PROVIDER_STAGING,
+      SPECIFIC_LLM_MODEL: process.env.SPECIFIC_LLM_MODEL_STAGING,
       PATRONUS_BASE_URL: process.env.PATRONUS_BASE_URL,
       PATRONUS_API_KEY: process.env.PATRONUS_API_KEY,
       PATRONUS_PROJECT_ID: process.env.PATRONUS_PROJECT_ID,
@@ -264,6 +309,8 @@ const getEnvironmentConfig = (env: {
       DDN_URL: process.env.DDN_URL_PRODUCTION,
       DDN_AUTH_TOKEN: process.env.DDN_AUTH_TOKEN_PRODUCTION,
       HASURA_PAT: process.env.HASURA_PAT_PRODUCTION,
+      SPECIFIC_LLM_PROVIDER: process.env.SPECIFIC_LLM_PROVIDER_PRODUCTION,
+      SPECIFIC_LLM_MODEL: process.env.SPECIFIC_LLM_MODEL_PRODUCTION,
       PATRONUS_BASE_URL: process.env.PATRONUS_BASE_URL,
       PATRONUS_API_KEY: process.env.PATRONUS_API_KEY,
       PATRONUS_PROJECT_ID: process.env.PATRONUS_PROJECT_ID,
@@ -419,16 +466,20 @@ console.log(`Total questions available: ${allQuestions.length}`);
 console.log(`Requested questions: ${RUN_ALL ? "all" : argv.questions}`);
 console.log(`Requested runs per question: ${NUM_RUNS}`);
 
-// Validate and select questions
+// Validate and select questions - now tracking original question numbers
 let questions: typeof allQuestions;
+let questionNumbers: number[]; // Track the original question numbers from evalset.csv
+
 if (RUN_ALL) {
   questions = allQuestions;
+  // For "all", question numbers are 1 through N
+  questionNumbers = Array.from({ length: allQuestions.length }, (_, i) => i + 1);
 } else {
   if (!argv.questions) {
     throw new Error("Questions argument is required when not using --all");
   }
 
-  const questionNumbers = parseQuestionSelection(argv.questions, allQuestions);
+  questionNumbers = parseQuestionSelection(argv.questions, allQuestions);
 
   if (questionNumbers.length === 0) {
     throw new Error(`No matching questions found for: ${argv.questions}`);
@@ -461,7 +512,7 @@ console.log(
   `Will run ${questions.length} question${questions.length === 1 ? "" : "s"}:`
 );
 questions.forEach((q: Question, i: number) =>
-  console.log(`  ${i + 1}. ${q.question}`)
+  console.log(`  ${questionNumbers[i]}. ${q.question}`)
 );
 
 // Create a logger class to manage output
@@ -495,8 +546,8 @@ class Logger {
     return Logger.instance;
   }
 
-  private formatQuestionHeader(questionIndex: number): string {
-    return chalk.bold.cyan(`Q${questionIndex + 1}/${this.totalQuestions}`);
+  formatQuestionHeader(questionNumber: number): string {
+    return chalk.bold.cyan(`Q${questionNumber}/${this.totalQuestions}`);
   }
 
   private formatRunHeader(runNumber: number): string {
@@ -523,11 +574,11 @@ class Logger {
     );
   }
 
-  startQuestion(question: string, questionIndex: number) {
-    this.currentQuestionIndex = questionIndex;
+  startQuestion(question: string, questionNumber: number) {
+    this.currentQuestionIndex = questionNumber;
     console.log(
       `\n${chalk.bold.cyan("=".repeat(80))}\n${chalk.bold.cyan(
-        "🤔 Question:"
+        "🤔 Question #" + questionNumber + ":"
       )} ${chalk.yellow(question)}`
     );
   }
@@ -722,8 +773,9 @@ async function getTrace(traceId: string, envConfig: { name: string; config: Retu
   const logger = Logger.getInstance(questions.length, NUM_RUNS);
   logger.logTraceInfo(traceId, envConfig.name);
 
-  const maxRetries = 10;
-  const baseDelay = 1000; // 1 second base delay
+  // Use higher retry count for trace fetching as it may take time for traces to be available
+  const maxRetries = Math.max(10, argv["max-retries"] * 2);
+  const baseDelay = argv["retry-delay"] * 1000; // Convert to milliseconds
   const maxDelay = 30000; // 30 seconds maximum delay
 
   // Get the DDN URL from the environment config
@@ -814,8 +866,13 @@ async function getTrace(traceId: string, envConfig: { name: string; config: Retu
       // If we have traces but no POST:/query span yet, continue retrying
       if (attempt < maxRetries) {
         logger.logRetry(attempt, maxRetries, envConfig.name);
-        // Exponential backoff: 2^(attempt-1) * baseDelay, capped at maxDelay
-        const delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
+        // Use configured backoff strategy
+        let delay: number;
+        if (argv["retry-backoff"] === "exponential") {
+          delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
+        } else {
+          delay = Math.min(attempt * baseDelay, maxDelay);
+        }
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
@@ -824,8 +881,13 @@ async function getTrace(traceId: string, envConfig: { name: string; config: Retu
     // If no traces yet, wait and retry
     if (attempt < maxRetries) {
       logger.logRetry(attempt, maxRetries, envConfig.name);
-      // Exponential backoff: 2^(attempt-1) * baseDelay, capped at maxDelay
-      const delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
+      // Use configured backoff strategy
+      let delay: number;
+      if (argv["retry-backoff"] === "exponential") {
+        delay = Math.min(Math.pow(2, attempt - 1) * baseDelay, maxDelay);
+      } else {
+        delay = Math.min(attempt * baseDelay, maxDelay);
+      }
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -876,6 +938,53 @@ function loadSystemPrompt(env: {
   }
 }
 
+// Retry utility function with configurable backoff
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries: number;
+    initialDelay: number;
+    backoffStrategy: "linear" | "exponential";
+    onRetry?: (attempt: number, error: any) => void;
+  }
+): Promise<T> {
+  const { maxRetries, initialDelay, backoffStrategy, onRetry } = options;
+  
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt > maxRetries) {
+        throw error;
+      }
+      
+      if (onRetry) {
+        onRetry(attempt, error);
+      }
+      
+      // Calculate delay based on backoff strategy
+      let delay: number;
+      if (backoffStrategy === "exponential") {
+        // Exponential backoff with jitter
+        delay = initialDelay * Math.pow(2, attempt - 1) * 1000;
+        // Add jitter (±25% of the delay)
+        const jitter = delay * 0.25 * (Math.random() * 2 - 1);
+        delay = Math.max(initialDelay * 1000, delay + jitter);
+        // Cap at 30 seconds
+        delay = Math.min(delay, 30000);
+      } else {
+        // Linear backoff
+        delay = initialDelay * attempt * 1000;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  // This should never be reached due to the throw in the loop
+  throw new Error("Retry logic error");
+}
+
 async function callPromptQL(
   question: string,
   envConfig: { name: string; config: ReturnType<typeof getEnvironmentConfig> },
@@ -905,12 +1014,30 @@ async function callPromptQL(
     displayName: envConfig.name,
   });
 
+  // Build LLM configuration with optional specificLlm field
+  const llmConfig: { provider: string; specificLlm?: { provider: string; model: string } } = {
+    provider: "hasura",
+  };
+  
+  // Add specificLlm - use environment variables if provided, otherwise use default
+  if (envConfig.config.SPECIFIC_LLM_PROVIDER && envConfig.config.SPECIFIC_LLM_MODEL) {
+    // Use environment-specific LLM configuration
+    llmConfig.specificLlm = {
+      provider: envConfig.config.SPECIFIC_LLM_PROVIDER,
+      model: envConfig.config.SPECIFIC_LLM_MODEL,
+    };
+  } else {
+    // Use default Anthropic Claude when no specific LLM is configured
+    llmConfig.specificLlm = {
+      provider: "anthropic",
+      model: "claude-sonnet-4-20250514",
+    };
+  }
+
   const requestData = {
-    version: "v1",
-    promptql_api_key: envConfig.config.PROMPTQL_API_KEY,
-    llm: {
-      provider: "hasura",
-    },
+    version: "v2",  // Updated to v2
+    // Removed promptql_api_key from request body - now sent in Authorization header
+    llm: llmConfig,
     ddn: {
       url: envConfig.config.DDN_URL,
       headers: {
@@ -933,12 +1060,32 @@ async function callPromptQL(
   try {
     console.log("Sending question:", question);
 
-    const response = await axios.post(
-      envConfig.config.PROMPTQL_URL!,
-      requestData,
+    // Use retry logic for the main PromptQL API call
+    const response = await retryWithBackoff(
+      async () => {
+        return await axios.post(
+          envConfig.config.PROMPTQL_URL!,
+          requestData,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${envConfig.config.PROMPTQL_API_KEY}`,
+            },
+            timeout: argv["timeout"] * 1000, // Convert seconds to milliseconds
+          }
+        );
+      },
       {
-        headers: {
-          "Content-Type": "application/json",
+        maxRetries: argv["max-retries"],
+        initialDelay: argv["retry-delay"],
+        backoffStrategy: argv["retry-backoff"],
+        onRetry: (attempt, error) => {
+          const errorMessage = axios.isAxiosError(error)
+            ? `Status: ${error.response?.status}, Message: ${error.response?.statusText || error.message}`
+            : error.message;
+          logger.logInfo(
+            `Retrying PromptQL API call (attempt ${attempt}/${argv["max-retries"]}): ${errorMessage}`
+          );
         },
       }
     );
@@ -1674,8 +1821,8 @@ async function runLatencyTests() {
   // Note: Environment structure is now initialized in the streaming writer
 
   // Process questions in batches
-  const processQuestion = async (question: Question, questionIndex: number) => {
-    logger.startQuestion(question.question, questionIndex);
+  const processQuestion = async (question: Question, questionIndex: number, questionNumber: number) => {
+    logger.startQuestion(question.question, questionNumber);
 
     // Run tests for each environment
     for (const envConfig of envConfigs) {
@@ -1834,11 +1981,12 @@ async function runLatencyTests() {
         };
 
         // Write incrementally to reduce memory usage (don't store in memory)
-        const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_${questionIndex}.json`);
+        const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_Q${questionNumber}.json`);
         fs.writeFileSync(incrementalPath, JSON.stringify({
           metadata: { timestamp: new Date().toISOString() },
           environment: envConfig.name,
           question: question.question,
+          questionNumber: questionNumber,
           results: questionData
         }, null, 2));
         
@@ -1873,11 +2021,12 @@ async function runLatencyTests() {
         };
 
         // Write incrementally to reduce memory usage (failed case, don't store in memory)
-        const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_${questionIndex}_failed.json`);
+        const incrementalPath = argv.output.replace('.json', `_${envConfig.name}_Q${questionNumber}_failed.json`);
         fs.writeFileSync(incrementalPath, JSON.stringify({
           metadata: { timestamp: new Date().toISOString() },
           environment: envConfig.name,
           question: question.question,
+          questionNumber: questionNumber,
           results: questionData
         }, null, 2));
         
@@ -1888,8 +2037,8 @@ async function runLatencyTests() {
 
   // Process all questions using the batch processor
   await batchProcessor.processBatches(
-    questions.map((q, i) => ({ question: q, index: i })),
-    ({ question, index }) => processQuestion(question, index)
+    questions.map((q, i) => ({ question: q, index: i, number: questionNumbers[i] })),
+    ({ question, index, number }) => processQuestion(question, index, number)
   );
 
 
@@ -1941,22 +2090,41 @@ async function runLatencyTests() {
   );
 
   // Load all incremental results into memory for final summary generation
+  // Also build a map of question numbers
+  const questionNumberMap: Map<string, number> = new Map();
+  
   for (const file of incrementalFiles) {
     try {
       const content = fs.readFileSync(file, 'utf-8');
       const data = JSON.parse(content);
       
       if (data.results && data.question && data.environment) {
-        results.environments[data.environment].questions[data.question] = data.results;
+        // Store the results with the question number
+        results.environments[data.environment].questions[data.question] = {
+          ...data.results,
+          questionNumber: data.questionNumber
+        };
+        
+        // Track question numbers for the summary
+        if (data.questionNumber) {
+          questionNumberMap.set(data.question, data.questionNumber);
+        }
       }
     } catch (error) {
       console.error(`Error reading incremental file ${file}:`, error);
     }
   }
 
-  for (const question of questions) {
+  // Track failed questions across all environments
+  const failedQuestions: { [env: string]: number[] } = {};
+  for (const envConfig of envConfigs) {
+    failedQuestions[envConfig.name] = [];
+  }
+
+  for (const [index, question] of questions.entries()) {
+    const questionNumber = questionNumbers[index]; // Use the actual question number from evalset.csv
     console.log(
-      `\n${chalk.bold("❓ Question:")} ${chalk.yellow(question.question)}`
+      `\n${chalk.bold("❓ Question #" + questionNumber + ":")} ${chalk.yellow(question.question)}`
     );
 
     const envStats = envConfigs
@@ -1964,6 +2132,11 @@ async function runLatencyTests() {
         const stats =
           results.environments[envConfig.name].questions[question.question];
         const hasValidRuns = stats && stats.successful_runs > 0;
+
+        // Track if this question failed for this environment
+        if (!stats || stats.successful_runs === 0) {
+          failedQuestions[envConfig.name].push(questionNumber);
+        }
 
         // Calculate accuracy metrics
         const accuracyResults = stats ? stats.runs
@@ -2067,16 +2240,52 @@ async function runLatencyTests() {
     }
   }
 
-  // Save results
+  // Display failed questions summary
+  console.log(`\n${chalk.bold.cyan("=".repeat(80))}`);
+  console.log(`${chalk.bold.red("❌ Failed Questions Summary")}`);
+  console.log(`${chalk.bold.cyan("-".repeat(80))}`);
+  
+  let hasFailures = false;
+  for (const envConfig of envConfigs) {
+    if (failedQuestions[envConfig.name].length > 0) {
+      hasFailures = true;
+      const failedList = failedQuestions[envConfig.name].sort((a, b) => a - b);
+      console.log(
+        `${chalk.bold(envConfig.name)}: ${chalk.red(`Questions ${failedList.join(", ")} failed`)}`
+      );
+    }
+  }
+  
+  if (!hasFailures) {
+    console.log(chalk.green("✅ All questions completed successfully across all environments!"));
+  }
+
+  // Always save full results and summary
   fs.writeFileSync(argv.output, JSON.stringify(results, null, 2));
+  
   const summaryPath = argv.output.replace(".json", "_summary.md");
-  const summary = generateMarkdownSummary(results, envConfigs);
+  const summary = generateMarkdownSummary(results, envConfigs, questionNumberMap);
   fs.writeFileSync(summaryPath, summary);
-  console.log(
-    `\n${chalk.bold.green("✅ Results saved:")} ${chalk.cyan(
-      argv.output
-    )} and ${chalk.cyan(summaryPath)}`
-  );
+  
+  // Additionally generate simple markdown when --simple flag is used
+  if (argv.simple) {
+    const simplePath = argv.output.replace(".json", "_simple.md");
+    const simpleMarkdown = generateSimpleMarkdown(argv.output, questionNumberMap);
+    fs.writeFileSync(simplePath, simpleMarkdown);
+    
+    console.log(
+      `\n${chalk.bold.green("✅ Results saved:")}\n` +
+      `  📊 Full results: ${chalk.cyan(argv.output)}\n` +
+      `  📈 Summary with stats: ${chalk.cyan(summaryPath)}\n` +
+      `  📝 Simple output (questions & responses only): ${chalk.cyan(simplePath)}`
+    );
+  } else {
+    console.log(
+      `\n${chalk.bold.green("✅ Results saved:")}\n` +
+      `  📊 Full results: ${chalk.cyan(argv.output)}\n` +
+      `  📈 Summary with stats: ${chalk.cyan(summaryPath)}`
+    );
+  }
 
   // Clean up incremental files unless --keep-incremental flag is set
   if (!argv["keep-incremental"]) {
@@ -2217,7 +2426,7 @@ async function callPatronusJudge(
             "X-API-KEY": envConfig.config.PATRONUS_API_KEY,
             "X-Project-ID": envConfig.config.PATRONUS_PROJECT_ID,
           },
-          timeout: 30000, // 30 second timeout
+          timeout: Math.max(30000, argv["timeout"] * 500), // Use half of main timeout or 30s minimum for Patronus
         }
       );
 
@@ -2452,9 +2661,50 @@ export async function main(args: string[]) {
         "Skip accuracy testing even if Patronus configuration is available",
       default: false,
     })
+    .option("keep-incremental", {
+      type: "boolean",
+      description:
+        "Keep incremental result files after completion (default: false - files are cleaned up)",
+      default: false,
+    })
+    .option("max-retries", {
+      type: "number",
+      description: "Maximum number of retries for failed API calls",
+      default: 3,
+    })
+    .option("retry-delay", {
+      type: "number",
+      description: "Initial delay in seconds between retries",
+      default: 1,
+    })
+    .option("retry-backoff", {
+      type: "string",
+      description: "Backoff strategy for retries (linear or exponential)",
+      choices: ["linear", "exponential"] as const,
+      default: "exponential" as const,
+    })
+    .option("simple", {
+      type: "boolean",
+      description: "Additionally generate simple markdown output (questions and responses only) alongside full results",
+      default: false,
+    })
+    .option("timeout", {
+      type: "number",
+      description: "API request timeout in seconds",
+      default: 60,
+    })
     .check((argv) => {
       if (!argv.questions && !argv.all) {
         throw new Error("You must specify either --questions or --all");
+      }
+      if ((argv as any)["max-retries"] < 0) {
+        throw new Error("max-retries must be a non-negative number");
+      }
+      if ((argv as any)["retry-delay"] < 0) {
+        throw new Error("retry-delay must be a non-negative number");
+      }
+      if ((argv as any)["timeout"] <= 0) {
+        throw new Error("timeout must be a positive number");
       }
       return true;
     })
